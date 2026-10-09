@@ -10,18 +10,19 @@ interface SiteRequest {
   domain: string | null;
 }
 
-export interface WidgetRequest extends SiteRequest {
+/** A browser's request about one Page of a Site. */
+interface PageRequest extends SiteRequest {
   pageKey: string;
-  url: string;
-  title: string;
   /** The token the browser holds for this Site, or `null` when it has none. */
   browserToken: string | null;
 }
 
-export interface ReactionRequest extends SiteRequest {
-  pageKey: string;
-  /** The token the browser holds for this Site, or `null` when it has none. */
-  browserToken: string | null;
+export interface WidgetRequest extends PageRequest {
+  url: string;
+  title: string;
+}
+
+export interface ReactionRequest extends PageRequest {
   /** Only ever hashed into a fingerprint, and never stored (ADR-0006). */
   clientIp: string | null;
   /** The Reaction Option the Visitor chooses, or `null` to remove their Reaction. */
@@ -63,8 +64,13 @@ export type ReactionResult =
 
 const maxPageTitleLength = 500;
 
-/** How long abuse limits remember a fingerprint or a browser (ADR-0006). */
-const rateLimitMemory = 24 * 60 * 60 * 1000;
+const hour = 60 * 60 * 1000;
+
+/**
+ * How long abuse limits remember a fingerprint or a browser. Erasing every
+ * hour then keeps nothing past 24 hours (ADR-0006).
+ */
+const rateLimitMemory = 23 * hour;
 
 /**
  * How many Reactions, changes and removals included, a browser and the
@@ -94,7 +100,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
 
   // The store only ever sees a hash of the token, so a leaked database
   // cannot be used to act as a Visitor.
-  async function recognise(
+  async function recognize(
     site: Site,
     browserToken: string | null,
   ): Promise<{ visitor: Visitor; browserToken: string } | null> {
@@ -116,14 +122,17 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
   }
 
   /**
-   * Who is reacting, in a form nobody can turn back into an IP address
-   * without the day's secret, and not comparable across Sites.
+   * The client's network, keyed with a secret that rotates daily (ADR-0006):
+   * nobody can turn it back into an IP address without that day's secret,
+   * nor follow a network from one day or one Site to the next.
    */
   async function fingerprintOf(site: Site, clientIp: string | null) {
-    return hmacSha256Hex(
+    const day = clock.now().toISOString().slice(0, "YYYY-MM-DD".length);
+    const daySecret = await hmacSha256Hex(
       await fingerprintSecret.current(),
-      `${site.id} ${networkOf(clientIp)}`,
+      day,
     );
+    return hmacSha256Hex(daySecret, `${site.id} ${networkOf(clientIp)}`);
   }
 
   async function eraseExpiredFingerprints(): Promise<void> {
@@ -165,12 +174,12 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         url: request.url,
         title: shorten(request.title, maxPageTitleLength),
       });
-      const known = await recognise(site, request.browserToken);
+      const recognized = await recognize(site, request.browserToken);
 
       return {
         outcome: "loaded",
         page,
-        ...(await reactionsView(site, page, known?.visitor ?? null)),
+        ...(await reactionsView(site, page, recognized?.visitor ?? null)),
       };
     },
 
@@ -194,14 +203,14 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         return { outcome: "reaction-option-not-found" };
       }
 
-      const known = await recognise(site, request.browserToken);
+      const recognized = await recognize(site, request.browserToken);
       const fingerprint = await fingerprintOf(site, request.clientIp);
       // Counting only what is still remembered makes the limits forget too.
       await eraseExpiredFingerprints();
       const hits = await store.countRateLimitHits({
         siteId: site.id,
         fingerprint,
-        visitorId: known?.visitor.id ?? null,
+        visitorId: recognized?.visitor.id ?? null,
       });
       if (
         hits.byVisitor >= reactionLimits.perBrowser ||
@@ -211,7 +220,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       }
 
       const { visitor, browserToken } =
-        known ?? (await issueBrowserToken(site));
+        recognized ?? (await issueBrowserToken(site));
       await store.recordRateLimitHit({
         siteId: site.id,
         fingerprint,
@@ -228,9 +237,9 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     },
 
     /**
-     * Erases what abuse limits remember from over 24 hours ago, fingerprints
-     * included (ADR-0006). Reacting erases first; a daily schedule covers the
-     * days when nobody reacts.
+     * Erases what abuse limits no longer remember, fingerprints included.
+     * The platform runs it every hour, since reacting erases only when
+     * someone reacts (ADR-0006).
      */
     eraseExpiredFingerprints,
   };

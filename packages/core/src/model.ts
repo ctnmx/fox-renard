@@ -24,7 +24,10 @@ export interface Page {
   title: string;
 }
 
-/** A browser that reacted on a Site, known by its token for that Site only (ADR-0005). */
+/**
+ * A Visitor as one Site knows them: by the token their browser holds for that
+ * Site, which no other Site recognizes (ADR-0005).
+ */
 export interface Visitor {
   id: string;
 }

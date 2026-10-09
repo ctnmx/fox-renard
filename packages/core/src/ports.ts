@@ -25,10 +25,12 @@ export interface Store {
   ): Promise<void>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;
-  /** How many remembered hits a fingerprint and a Visitor have on a Site. */
-  countRateLimitHits(
-    hit: Omit<RateLimitHit, "visitorId" | "at"> & { visitorId: string | null },
-  ): Promise<{ byFingerprint: number; byVisitor: number }>;
+  /** How many remembered hits a fingerprint and a Visitor each have on a Site. */
+  countRateLimitHits(of: {
+    siteId: string;
+    fingerprint: string;
+    visitorId: string | null;
+  }): Promise<{ byFingerprint: number; byVisitor: number }>;
   /** Erases the hits made at or before `cutoff`, fingerprints with them. */
   eraseRateLimitHits(cutoff: Date): Promise<void>;
 }
@@ -72,7 +74,11 @@ export interface BotCheck {
   verify(solution: string): Promise<boolean>;
 }
 
-/** The secret keying the anonymised fingerprint; it rotates daily (ADR-0006). */
+/**
+ * The secret from which Core derives each day's fingerprint secret (ADR-0006).
+ * Keep it out of the database, so a copy of the database alone cannot tell
+ * which IP address a fingerprint stands for.
+ */
 export interface FingerprintSecret {
   current(): Promise<string>;
 }

@@ -36,7 +36,7 @@ function optionId(label: OptionLabel): string {
   const option = rectoVerso.reactionSet.options.find(
     (option) => option.label === label,
   );
-  if (!option) throw new Error(`No Reaction Option labelled ${label}`);
+  if (!option) throw new Error(`No Reaction Option labeled ${label}`);
   return option.id;
 }
 
@@ -253,7 +253,7 @@ describe("a Reaction is refused and changes nothing", () => {
 });
 
 describe("a browser token", () => {
-  test("issued for one Site is not recognised on another Site", async () => {
+  test("issued for one Site is not recognized on another Site", async () => {
     await loadWidget();
     const anna = newBrowser();
     await anna.react("Je l'ai fait !");
@@ -289,7 +289,7 @@ describe("abuse limits on reacting", () => {
     }
   }
 
-  test("a browser can react 50 times in 24 hours, then is refused", async () => {
+  test("a browser can react 50 times, then is refused", async () => {
     await loadWidget();
     const anna = newBrowser();
     for (let i = 0; i < 50; i++) {
@@ -314,7 +314,7 @@ describe("abuse limits on reacting", () => {
       "2001:db8:1:3::7",
     ],
   ])(
-    "%s can react 100 times in 24 hours, whichever browsers it uses",
+    "%s can react 100 times a day, whichever browsers it uses",
     async (_, clientIp, sameNetwork, otherNetwork) => {
       await loadWidget();
       await reactFromNewBrowsers(100, clientIp);
@@ -334,23 +334,39 @@ describe("abuse limits on reacting", () => {
     },
   );
 
-  test("fingerprints and browsers are forgotten 24 hours after they reacted", async () => {
+  test("a network's fingerprint rotates daily, so its limit starts over at midnight UTC", async () => {
     await loadWidget();
     const clientIp = "203.0.113.7";
-    const anna = newBrowser({ clientIp });
-    for (let i = 0; i < 50; i++) await anna.react("Je m'inspire");
-    await reactFromNewBrowsers(50, clientIp);
+    await reactFromNewBrowsers(100, clientIp);
 
-    api.clock.advance(23 * hour);
-    expect((await anna.tryReact("Je le prépare")).status).toBe(429);
+    const now = api.clock.now();
+    const midnight = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + 1,
+    );
+    api.clock.advance(midnight - now.getTime() - 1);
     expect(
       (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
     ).toBe(429);
 
-    api.clock.advance(1 * hour);
-    expect((await anna.tryReact("Je le prépare")).status).toBe(200);
+    api.clock.advance(1);
     expect(
       (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
     ).toBe(200);
+  });
+
+  test("what abuse limits remember, fingerprints included, is erased within 24 hours", async () => {
+    await loadWidget();
+    const anna = newBrowser();
+    for (let i = 0; i < 50; i++) await anna.react("Je m'inspire");
+
+    // Each hit keeps a fingerprint with its browser, so the browser's limit
+    // lifts only once its hits, fingerprints included, are erased.
+    api.clock.advance(22 * hour);
+    expect((await anna.tryReact("Je le prépare")).status).toBe(429);
+
+    api.clock.advance(1 * hour);
+    expect((await anna.tryReact("Je le prépare")).status).toBe(200);
   });
 });

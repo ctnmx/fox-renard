@@ -32,6 +32,12 @@ export async function startDemo(): Promise<void> {
     fingerprintSecret: new FixedFingerprintSecret(),
   });
 
+  // Like the platform in production, erase expired fingerprints every hour (ADR-0006).
+  setInterval(
+    () => core.eraseExpiredFingerprints().catch(console.error),
+    60 * 60 * 1000,
+  ).unref();
+
   const widgetScript = fileURLToPath(
     import.meta.resolve("@fox-renard/widget/widget.js"),
   );

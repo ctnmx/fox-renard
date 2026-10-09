@@ -82,7 +82,7 @@ export const pages = pgTable(
   (table) => [unique().on(table.siteId, table.key)],
 );
 
-/** A browser that reacted on a Site, known by its token for that Site only (ADR-0005). */
+/** A Visitor as one Site knows them: by their browser's token for that Site (ADR-0005). */
 export const visitors = pgTable(
   "visitors",
   {
@@ -115,7 +115,7 @@ export const reactions = pgTable(
   (table) => [primaryKey({ columns: [table.pageId, table.visitorId] })],
 );
 
-/** What abuse limits remember of recent actions, for 24 hours at most (ADR-0006). */
+/** What abuse limits remember of recent Reactions, for 24 hours at most (ADR-0006). */
 export const rateLimitHits = pgTable(
   "rate_limit_hits",
   {
