@@ -13,6 +13,7 @@ async function fetchWidgetData(
     param: { siteId, pageKey },
     // The address without query or fragment, so tracking parameters never stick.
     query: { url: location.origin + location.pathname, title: document.title },
+    header: {},
   });
   if (response.status !== 200) {
     throw new Error(`Fox Renard: the Widget data answered ${response.status}.`);

@@ -23,3 +23,13 @@ export interface Page {
   url: string;
   title: string;
 }
+
+/** A browser that reacted on a Site, known by its token for that Site only (ADR-0005). */
+export interface Visitor {
+  id: string;
+}
+
+/** A Visitor's choice of one Reaction Option on a Page. */
+export interface Reaction {
+  optionId: string;
+}

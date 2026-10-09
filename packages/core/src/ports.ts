@@ -1,10 +1,28 @@
-import type { Page, Site } from "./model";
+import type { Page, Reaction, Site, Visitor } from "./model";
 
 /** Storage of domain data. */
 export interface Store {
   findSite(siteId: string): Promise<Site | null>;
   /** Creates the Page on first sight of its Page Key; a known Page is returned unchanged. */
   findOrCreatePage(siteId: string, page: Omit<Page, "id">): Promise<Page>;
+  findPage(siteId: string, key: string): Promise<Page | null>;
+  /** The Visitor whose browser token hashes to `tokenHash` on this Site. */
+  findVisitor(siteId: string, tokenHash: string): Promise<Visitor | null>;
+  createVisitor(siteId: string, tokenHash: string): Promise<Visitor>;
+  /**
+   * How many Visitors hold each Reaction Option on a Page, by option id, and
+   * the Reaction `visitorId` holds there.
+   */
+  findReactions(
+    pageId: string,
+    visitorId: string | null,
+  ): Promise<{ counts: Map<string, number>; reaction: Reaction | null }>;
+  /** Sets a Visitor's one Reaction on a Page; `null` removes it. */
+  setReaction(
+    pageId: string,
+    visitorId: string,
+    optionId: string | null,
+  ): Promise<void>;
 }
 
 export interface Clock {

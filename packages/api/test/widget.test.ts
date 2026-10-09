@@ -22,7 +22,7 @@ function requestWidget({
   title?: string;
 } = {}) {
   return api.client.v1.sites[":siteId"].pages[":pageKey"].widget.$get(
-    { param: { siteId, pageKey }, query: { url, title } },
+    { param: { siteId, pageKey }, query: { url, title }, header: {} },
     { headers: origin === null ? {} : { Origin: origin } },
   );
 }

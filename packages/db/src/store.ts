@@ -1,7 +1,7 @@
 import type { Page, Store } from "@fox-renard/core";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import type { Database } from "./database";
-import { pages } from "./schema";
+import { pages, reactions, visitors } from "./schema";
 
 export function createStore(db: Database): Store {
   const pageColumns = {
@@ -70,6 +70,72 @@ export function createStore(db: Database): Store {
         (await findPage(siteId, page.key));
       if (!found) throw new Error(`Page ${page.key} could not be created`);
       return found;
+    },
+
+    async findPage(siteId, key) {
+      return (await findPage(siteId, key)) ?? null;
+    },
+
+    async findVisitor(siteId, tokenHash) {
+      const [visitor] = await db
+        .select({ id: visitors.id })
+        .from(visitors)
+        .where(
+          and(eq(visitors.siteId, siteId), eq(visitors.tokenHash, tokenHash)),
+        );
+      return visitor ?? null;
+    },
+
+    async createVisitor(siteId, tokenHash) {
+      const [visitor] = await db
+        .insert(visitors)
+        .values({ siteId, tokenHash })
+        .returning({ id: visitors.id });
+      if (!visitor) throw new Error("The Visitor could not be created");
+      return visitor;
+    },
+
+    async findReactions(pageId, visitorId) {
+      const counts = await db
+        .select({ optionId: reactions.optionId, count: count() })
+        .from(reactions)
+        .where(eq(reactions.pageId, pageId))
+        .groupBy(reactions.optionId);
+      const [reaction] = visitorId
+        ? await db
+            .select({ optionId: reactions.optionId })
+            .from(reactions)
+            .where(
+              and(
+                eq(reactions.pageId, pageId),
+                eq(reactions.visitorId, visitorId),
+              ),
+            )
+        : [];
+      return {
+        counts: new Map(counts.map((row) => [row.optionId, row.count])),
+        reaction: reaction ?? null,
+      };
+    },
+
+    async setReaction(pageId, visitorId, optionId) {
+      const ofVisitorOnPage = and(
+        eq(reactions.pageId, pageId),
+        eq(reactions.visitorId, visitorId),
+      );
+      if (optionId === null) {
+        await db.delete(reactions).where(ofVisitorOnPage);
+        return;
+      }
+      // The primary key keeps one Reaction per Visitor and Page, even when
+      // two requests from one browser race.
+      await db
+        .insert(reactions)
+        .values({ pageId, visitorId, optionId })
+        .onConflictDoUpdate({
+          target: [reactions.pageId, reactions.visitorId],
+          set: { optionId },
+        });
     },
   };
 }
