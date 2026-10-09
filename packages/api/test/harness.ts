@@ -6,8 +6,14 @@ import {
   InMemoryPhotoStore,
   StubBotCheck,
 } from "@fox-renard/core/fakes";
-import { createStore, type SiteSeed, seed, seedSite } from "@fox-renard/db";
-import { createPgliteDatabase } from "@fox-renard/db/pglite";
+import {
+  createStore,
+  type Database,
+  type SiteSeed,
+  seed,
+  seedSite,
+} from "@fox-renard/db";
+import { createPgliteDatabase, emptyDatabase } from "@fox-renard/db/pglite";
 import { testClient } from "hono/testing";
 import { createApp } from "../src";
 
@@ -37,13 +43,19 @@ export const anotherSite = {
   },
 } as const satisfies SiteSeed;
 
+// Creating a database takes about a second and emptying one a few
+// milliseconds, so a test file's tests share one database, emptied for each.
+let database: Promise<Database> | undefined;
+
 /**
  * Seam 1: the HTTP API, called in-process against PGlite with the real
- * migrations, the Recto Verso seed and another Site. The fakes stand in for the outside
- * world so tests can drive and observe it.
+ * migrations, the Recto Verso seed and another Site. The fakes stand in for
+ * the outside world so tests can drive and observe it.
  */
 export async function startTestApi() {
-  const db = await createPgliteDatabase();
+  database ??= createPgliteDatabase();
+  const db = await database;
+  await emptyDatabase(db);
   await seed(db, { memberEmail: "membre@example.com" });
   await seedSite(db, anotherSite, { memberEmail: "membre@velo.example" });
 

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Checks the staged files with Biome, as CI checks every file.
+node_modules/.bin/biome check --staged --no-errors-on-unmatched --files-ignore-unknown=true || {
+  echo "Biome found problems in the staged files: run pnpm format, then stage them again." >&2
+  exit 1
+}
