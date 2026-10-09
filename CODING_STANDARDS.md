@@ -13,3 +13,7 @@ Tests drive Fox Renard at Seam 1 (`startTestApi()`) or Seam 2 (the demo route sh
 ## Vocabulary
 
 Code, comments, test names and docs use the terms of `GLOSSARY.md`, and a change to what a term means is flagged as `docs/agents/domain.md` describes.
+
+## Docs
+
+Docs are written in US English, in short sentences and in the active voice.
