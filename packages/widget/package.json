@@ -1,0 +1,22 @@
+{
+  "name": "@fox-renard/widget",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./widget.js": "./dist/widget.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/main.tsx --bundle --minify --format=iife --target=es2022 --jsx=automatic --jsx-import-source=preact --loader:.css=text --outfile=dist/widget.js",
+    "size": "node scripts/check-size.mjs"
+  },
+  "dependencies": {
+    "@fox-renard/api": "workspace:*",
+    "preact": "catalog:"
+  },
+  "devDependencies": {
+    "esbuild": "catalog:",
+    "typescript": "catalog:"
+  }
+}

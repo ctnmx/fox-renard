@@ -1,0 +1,71 @@
+/*
+ * Hostile CSS: the kind of global rules a Webflow site carries, made as
+ * destructive as possible for an embedded element that does not isolate
+ * itself. The Widget must render intact despite all of them.
+ */
+
+/* Element rules, which Shadow DOM keeps out. */
+*,
+*::before,
+*::after {
+  box-sizing: content-box;
+}
+
+button {
+  all: unset;
+  display: none !important;
+}
+
+ul,
+ol {
+  margin: 4em;
+  padding: 0;
+  list-style: square;
+}
+
+li {
+  float: right;
+  width: 12%;
+  overflow: hidden;
+}
+
+p,
+span,
+h2,
+h3 {
+  font-size: 3px;
+  text-transform: uppercase;
+}
+
+a {
+  color: transparent;
+}
+
+img,
+svg {
+  display: none !important;
+}
+
+/* Rules reaching the Widget's own element through the embed wrapper. */
+.w-embed > * {
+  display: inline;
+  margin: 3em;
+  padding: 2em;
+  border: 4px dashed red;
+}
+
+/* Inherited properties, which do cross the Shadow DOM boundary. */
+.w-embed {
+  color: transparent;
+  cursor: none;
+  font-size: 0;
+  font-style: italic;
+  font-weight: 100;
+  letter-spacing: 1em;
+  line-height: 0;
+  text-align: right;
+  text-transform: uppercase;
+  visibility: hidden;
+  white-space: nowrap;
+  word-spacing: 2em;
+}

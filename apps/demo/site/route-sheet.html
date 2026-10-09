@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Le tour du Mont Aiguille | Recto Verso</title>
+    <link rel="stylesheet" href="/route-sheet.css" />
+    <!-- Global rules that break any embedded element not isolating itself. -->
+    <link rel="stylesheet" href="/hostile.css" />
+  </head>
+  <body>
+    <header class="navbar">
+      <a class="brand" href="/">Recto Verso</a>
+      <nav class="nav-links">
+        <a class="nav-link" href="/">Randonnée</a>
+        <a class="nav-link" href="/">Vélo</a>
+        <a class="nav-link" href="/">Carnets</a>
+      </nav>
+    </header>
+
+    <div class="hero">
+      <div class="hero-inner">
+        <div class="tag">Randonnée · Vercors</div>
+        <h1 class="hero-title">Le tour du Mont Aiguille</h1>
+      </div>
+    </div>
+
+    <main class="sheet">
+      <div class="facts">
+        <div class="fact"><div class="fact-value">17 km</div><div class="fact-label">Distance</div></div>
+        <div class="fact"><div class="fact-value">950 m</div><div class="fact-label">Dénivelé</div></div>
+        <div class="fact"><div class="fact-value">6 h</div><div class="fact-label">Durée</div></div>
+        <div class="fact"><div class="fact-value">Moyenne</div><div class="fact-label">Difficulté</div></div>
+      </div>
+
+      <div class="rich-text">
+        <h2 class="heading">L'itinéraire</h2>
+        <p class="paragraph">
+          Le Mont Aiguille, « montagne inaccessible » du Moyen Âge, se contourne
+          par un sentier en balcon qui offre des vues changeantes sur ses
+          falaises. On part du village de Richardière, on remonte la forêt
+          jusqu'au col de l'Aupet, puis on bascule vers le pas de l'Aiguille.
+        </p>
+        <p class="paragraph">
+          Après le col, le sentier longe les prairies d'altitude où paissent
+          les troupeaux en été. Le retour se fait par le hameau des Pellas et
+          les chemins creux qui descendent vers Chichilianne.
+        </p>
+
+        <h2 class="heading">Étape 1 : de Richardière au col de l'Aupet</h2>
+        <p class="paragraph">
+          La montée est régulière, à l'ombre des hêtres puis des sapins. Une
+          source permet de remplir les gourdes à mi-pente. Au col, le Mont
+          Aiguille apparaît soudain, dressé comme une table de pierre.
+        </p>
+        <p class="paragraph">
+          Prévoir une bonne heure et demie pour cette première étape, plus si
+          l'on s'arrête pour observer les chamois sur les vires.
+        </p>
+
+        <h2 class="heading">Étape 2 : du col de l'Aupet au pas de l'Aiguille</h2>
+        <p class="paragraph">
+          Le sentier se faufile entre les éboulis et les pelouses fleuries. Le
+          pas de l'Aiguille, où une cabane abrite les randonneurs, est le point
+          haut de la boucle et l'endroit idéal pour pique-niquer.
+        </p>
+        <p class="paragraph">
+          Par temps clair, la vue porte jusqu'au Dévoluy et aux sommets de
+          l'Oisans encore enneigés en juin.
+        </p>
+
+        <h2 class="heading">Étape 3 : le retour par les Pellas</h2>
+        <p class="paragraph">
+          La descente est plus raide : bâtons conseillés. On rejoint les
+          hameaux par une piste forestière, puis Richardière par un sentier
+          qui suit le torrent.
+        </p>
+
+        <h2 class="heading">Infos pratiques</h2>
+        <p class="paragraph">
+          Accès en train jusqu'à Clelles-Mens, puis navette estivale. Parking
+          gratuit à Richardière. Eau au départ et à mi-montée uniquement.
+        </p>
+        <p class="paragraph">
+          <a class="sheet-link" id="gpx" href="/">Télécharger la trace GPX</a>
+        </p>
+      </div>
+
+      <div class="w-embed">
+        <fox-renard-widget
+          site-id="{{SITE_ID}}"
+          page-key="article-le-tour-du-mont-aiguille"
+        ></fox-renard-widget>
+      </div>
+    </main>
+
+    <footer class="footer">Recto Verso · Fiches d'itinéraires</footer>
+
+    <script async src="{{API_ORIGIN}}/widget.js"></script>
+  </body>
+</html>

@@ -1,0 +1,92 @@
+/*
+ * Inherited properties cross the Shadow DOM boundary and rules on the host
+ * element come from the Site, so the host resets everything it can. Its
+ * !important declarations win over the Site's, even !important ones.
+ */
+:host {
+  all: initial !important;
+  display: block !important;
+  font-family: inherit !important;
+}
+
+.widget {
+  color: #1f2328;
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.reaction-set {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.prompt {
+  margin: 0 auto 16px;
+  padding: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 112px;
+  padding: 12px 16px;
+  border: 1px solid #d8d4cc;
+  border-radius: 12px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.option:focus-visible {
+  outline: 3px solid #1d6f42;
+  outline-offset: 2px;
+}
+
+.picto {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.label {
+  font-size: 15px;
+}
+
+.count {
+  font-weight: 700;
+}
+
+.powered-by {
+  display: inline-block;
+  margin-top: 16px;
+  color: #6b6b6b;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.powered-by:hover {
+  text-decoration: underline;
+}
+
+.powered-by:focus-visible {
+  outline: 2px solid #1d6f42;
+  outline-offset: 2px;
+}
