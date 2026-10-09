@@ -17,6 +17,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @fox-renard/db generate
+          if [ -n "$(git status --porcelain packages/db/migrations)" ]; then
+            git status --short packages/db/migrations
+            echo "::error::schema.ts changed without a migration: run pnpm --filter @fox-renard/db generate and commit it."
+            exit 1
+          fi
       - name: Typecheck
         run: pnpm typecheck
       - name: Lint and format

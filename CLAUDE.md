@@ -19,7 +19,6 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 
 ## Code
 
-- Core (`packages/core`) holds every domain rule and reaches the outside only through its ports (ADR-0003).
-- Seam 1 tests (`packages/api/test`) start the HTTP API in-process with `startTestApi()`; Seam 2 tests (`apps/demo/tests`) drive the demo route sheet in Chromium. Tests assert only what a Visitor or Member observes, never database rows.
+- Seam 1 tests (`packages/api/test`) start the HTTP API in-process with `startTestApi()`; Seam 2 tests (`apps/demo/tests`) drive the demo route sheet in Chromium, and `pnpm --filter @fox-renard/demo screenshot <file.png>` captures the Widget there.
 - Schema changes go in `packages/db/src/schema.ts`; `pnpm --filter @fox-renard/db generate` then writes the migration.
 - `@playwright/test` stays on the version whose Chromium the cloud container pre-installs in `/opt/pw-browsers`.

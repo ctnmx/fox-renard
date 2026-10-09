@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "start": "tsx src/server.ts",
-    "e2e": "pnpm --filter @fox-renard/widget build && playwright test"
+    "e2e": "pnpm --filter @fox-renard/widget build && playwright test",
+    "screenshot": "pnpm --filter @fox-renard/widget build && tsx src/screenshot.ts"
   },
   "dependencies": {
     "@fox-renard/api": "workspace:*",
