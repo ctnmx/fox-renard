@@ -1,8 +1,8 @@
 # Contributing to Fox Renard
 
-Thank you for helping. This guide covers the Contributor License Agreement, how work flows from an idea to a merged pull request, the rules for `main`, what CI checks, and how to run the tests.
+Thank you for helping. This guide covers the Contributor License Agreement, how work flows from an idea to a merged pull request, the rules for `main`, the writing rules, what CI checks, and how to run the tests.
 
-Read [`GLOSSARY.md`](GLOSSARY.md) first. Code, tests, issues and pull requests use its terms: a Visitor, not a "user"; a Page, not a "thread". The decisions behind the design are in [`docs/adr/`](docs/adr/).
+Read [`GLOSSARY.md`](GLOSSARY.md) and the decisions in [`docs/adr/`](docs/adr/) first.
 
 ## Sign the CLA
 
@@ -32,6 +32,13 @@ Have an idea or found a bug? Open an issue before writing a large change, so it 
 - A pull request merges only when every CI check below passes, and, for outside contributors, the `license/cla` check too.
 - The maintainer reviews and merges.
 - Commit messages start with a [Conventional Commits](https://www.conventionalcommits.org/) type: `feat:`, `fix:`, `docs:`, `test:`, `chore:`.
+
+## Writing
+
+These rules apply to code, tests, docs, issues and pull requests:
+
+- Use the terms in `GLOSSARY.md`: a Visitor, not a "user"; a Page, not a "thread". The words each entry lists under _Avoid_ stay out of prose, identifiers and test names ([`docs/agents/domain.md`](docs/agents/domain.md)).
+- Write in US English, in short sentences, in the active voice.
 
 ## What CI checks
 

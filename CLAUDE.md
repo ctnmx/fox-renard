@@ -13,6 +13,10 @@ Issues and specs live in GitHub Issues on `ctnmx/fox-renard`. See `docs/agents/i
 
 Default five-role vocabulary. See `docs/agents/triage-labels.md`.
 
+### Pull requests
+
+When `/implement` finishes, open a pull request with the `pr` skill. A ticket's human-only steps go in its body.
+
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
