@@ -1,6 +1,7 @@
 import type { Core } from "@fox-renard/core";
 import { zValidator } from "@hono/zod-validator";
 import { Hono, type ValidationTargets } from "hono";
+import type { GetConnInfo } from "hono/conninfo";
 import { cors } from "hono/cors";
 import { z } from "zod";
 
@@ -37,7 +38,12 @@ const browserTokenHeader = z.object({
 // so any page may read what they answer.
 const publicCors = cors();
 
-export function createApp(core: Core) {
+export interface Platform {
+  /** Tells the client's IP address, which only the platform knows. */
+  getConnInfo: GetConnInfo;
+}
+
+export function createApp(core: Core, { getConnInfo }: Platform) {
   return new Hono()
     .use("/v1/*", publicCors)
     .get(
@@ -93,6 +99,7 @@ export function createApp(core: Core) {
           domain: requestingDomain(c.req.header("Origin")),
           pageKey,
           browserToken: browserToken ?? null,
+          clientIp: getConnInfo(c).remote.address ?? null,
           optionId,
         });
         switch (result.outcome) {
@@ -104,6 +111,8 @@ export function createApp(core: Core) {
             return c.json({ error: "page_not_found" }, 404);
           case "reaction-option-not-found":
             return c.json({ error: "reaction_option_not_found" }, 422);
+          case "rate-limited":
+            return c.json({ error: "rate_limited" }, 429);
           case "reacted": {
             const { browserToken, reactionSet, reaction } = result;
             return c.json({ browserToken, reactionSet, reaction }, 200);

@@ -11,6 +11,7 @@ import {
 import { createStore, rectoVerso, seed } from "@fox-renard/db";
 import { createPgliteDatabase } from "@fox-renard/db/pglite";
 import { serve } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono } from "hono";
 import { apiOrigin, siteOrigin } from "./addresses";
 
@@ -41,7 +42,7 @@ export async function startDemo(): Promise<void> {
         "Content-Type": "text/javascript; charset=utf-8",
       }),
     )
-    .route("/", createApp(core));
+    .route("/", createApp(core, { getConnInfo }));
 
   const siteFolder = new URL("../site/", import.meta.url);
 

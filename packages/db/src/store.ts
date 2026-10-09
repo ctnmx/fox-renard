@@ -1,7 +1,7 @@
 import type { Page, Store } from "@fox-renard/core";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, lte, or, type SQL, sql } from "drizzle-orm";
 import type { Database } from "./database";
-import { pages, reactions, visitors } from "./schema";
+import { pages, rateLimitHits, reactions, visitors } from "./schema";
 
 export function createStore(db: Database): Store {
   const pageColumns = {
@@ -136,6 +136,33 @@ export function createStore(db: Database): Store {
           target: [reactions.pageId, reactions.visitorId],
           set: { optionId },
         });
+    },
+
+    async recordRateLimitHit(hit) {
+      await db.insert(rateLimitHits).values(hit);
+    },
+
+    async countRateLimitHits({ siteId, fingerprint, visitorId }) {
+      const ofFingerprint = eq(rateLimitHits.fingerprint, fingerprint);
+      const ofVisitor = visitorId
+        ? eq(rateLimitHits.visitorId, visitorId)
+        : sql`false`;
+      const countWhere = (condition: SQL) =>
+        sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
+      const [counts] = await db
+        .select({
+          byFingerprint: countWhere(ofFingerprint),
+          byVisitor: countWhere(ofVisitor),
+        })
+        .from(rateLimitHits)
+        .where(
+          and(eq(rateLimitHits.siteId, siteId), or(ofFingerprint, ofVisitor)),
+        );
+      return counts ?? { byFingerprint: 0, byVisitor: 0 };
+    },
+
+    async eraseRateLimitHits(cutoff) {
+      await db.delete(rateLimitHits).where(lte(rateLimitHits.at, cutoff));
     },
   };
 }

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { anotherSite, rectoVerso, startTestApi, type TestApi } from "./harness";
+import {
+  anotherSite,
+  clientIpHeader,
+  rectoVerso,
+  startTestApi,
+  type TestApi,
+} from "./harness";
 
 let api: TestApi;
 
@@ -71,14 +77,18 @@ async function loadWidget({
   return response.json();
 }
 
+const anyClientIp = "198.51.100.20";
+
 function putReaction({
   page = routeSheet,
   origin = page.origin,
+  clientIp = anyClientIp,
   browserToken,
   optionId,
 }: {
   page?: WidgetPage;
   origin?: string;
+  clientIp?: string;
   browserToken?: string;
   optionId: string | null;
 }) {
@@ -88,7 +98,7 @@ function putReaction({
       header: authorization(browserToken),
       json: { optionId },
     },
-    { headers: { Origin: origin } },
+    { headers: { Origin: origin, [clientIpHeader]: clientIp } },
   );
 }
 
@@ -96,11 +106,12 @@ function putReaction({
  * A Visitor's browser on the route sheet. Like the Widget, it keeps the
  * browser token the API hands it and sends it back with every request.
  */
-function newBrowser() {
+function newBrowser({ clientIp = anyClientIp } = {}) {
   let browserToken: string | undefined;
 
   async function tryReact(label: OptionLabel | null) {
     const response = await putReaction({
+      clientIp,
       browserToken,
       optionId: label === null ? null : optionId(label),
     });
@@ -265,5 +276,81 @@ describe("a browser token", () => {
     const reacted = await response.json();
     expect(reacted).toMatchObject({ browserToken: expect.any(String) });
     expect(reacted).not.toMatchObject({ browserToken: anna.browserToken });
+  });
+});
+
+describe("abuse limits on reacting", () => {
+  const hour = 60 * 60 * 1000;
+
+  /** Reacts from `count` new browsers on one client IP. */
+  async function reactFromNewBrowsers(count: number, clientIp: string) {
+    for (let i = 0; i < count; i++) {
+      await newBrowser({ clientIp }).react("Je l'ai fait !");
+    }
+  }
+
+  test("a browser can react 50 times in 24 hours, then is refused", async () => {
+    await loadWidget();
+    const anna = newBrowser();
+    for (let i = 0; i < 50; i++) {
+      await anna.react(i % 2 === 0 ? "Je le prépare" : "Je m'inspire");
+    }
+
+    expect((await anna.tryReact("Je l'ai fait !")).status).toBe(429);
+    expect(countsIn(await loadWidget())).toEqual({
+      "Je m'inspire": 1,
+      "Je le prépare": 0,
+      "Je l'ai fait !": 0,
+    });
+  });
+
+  test.each([
+    ["an IPv4 address", "203.0.113.7", "203.0.113.7", "203.0.113.8"],
+    // An IPv6 subscriber holds a whole /64, so it counts as one network.
+    [
+      "an IPv6 /64",
+      "2001:db8:1:2::7",
+      "2001:db8:1:2:ffff:ffff:ffff:ffff",
+      "2001:db8:1:3::7",
+    ],
+  ])(
+    "%s can react 100 times in 24 hours, whichever browsers it uses",
+    async (_, clientIp, sameNetwork, otherNetwork) => {
+      await loadWidget();
+      await reactFromNewBrowsers(100, clientIp);
+
+      const refused = await newBrowser({ clientIp: sameNetwork }).tryReact(
+        "Je l'ai fait !",
+      );
+      expect(refused.status).toBe(429);
+      expect(countsIn(await loadWidget())).toMatchObject({
+        "Je l'ai fait !": 100,
+      });
+
+      const elsewhere = await newBrowser({ clientIp: otherNetwork }).tryReact(
+        "Je l'ai fait !",
+      );
+      expect(elsewhere.status).toBe(200);
+    },
+  );
+
+  test("fingerprints and browsers are forgotten 24 hours after they reacted", async () => {
+    await loadWidget();
+    const clientIp = "203.0.113.7";
+    const anna = newBrowser({ clientIp });
+    for (let i = 0; i < 50; i++) await anna.react("Je m'inspire");
+    await reactFromNewBrowsers(50, clientIp);
+
+    api.clock.advance(23 * hour);
+    expect((await anna.tryReact("Je le prépare")).status).toBe(429);
+    expect(
+      (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
+    ).toBe(429);
+
+    api.clock.advance(1 * hour);
+    expect((await anna.tryReact("Je le prépare")).status).toBe(200);
+    expect(
+      (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
+    ).toBe(200);
   });
 });

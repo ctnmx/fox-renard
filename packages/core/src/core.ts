@@ -1,5 +1,6 @@
-import { randomHex, sha256Hex } from "./crypto";
+import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
 import type { Page, Reaction, ReactionOption, Site, Visitor } from "./model";
+import { networkOf } from "./network";
 import type { Ports } from "./ports";
 
 /** Where a public request comes from: a Site, and the domain of the page on it. */
@@ -21,6 +22,8 @@ export interface ReactionRequest extends SiteRequest {
   pageKey: string;
   /** The token the browser holds for this Site, or `null` when it has none. */
   browserToken: string | null;
+  /** Only ever hashed into a fingerprint, and never stored (ADR-0006). */
+  clientIp: string | null;
   /** The Reaction Option the Visitor chooses, or `null` to remove their Reaction. */
   optionId: string | null;
 }
@@ -55,16 +58,27 @@ export type ReactionResult =
     } & ReactionsView)
   | SiteRefusal
   | { outcome: "page-not-found" }
-  | { outcome: "reaction-option-not-found" };
+  | { outcome: "reaction-option-not-found" }
+  | { outcome: "rate-limited" };
 
 const maxPageTitleLength = 500;
+
+/** How long abuse limits remember a fingerprint or a browser (ADR-0006). */
+const rateLimitMemory = 24 * 60 * 60 * 1000;
+
+/**
+ * How many Reactions, changes and removals included, a browser and the
+ * network it reacts from may make while they are remembered. A network can
+ * hold several Visitors, such as a household or an office.
+ */
+const reactionLimits = { perBrowser: 50, perFingerprint: 100 };
 
 function shorten(text: string, maxLength: number): string {
   // By code point, so an emoji is never cut in half.
   return Array.from(text).slice(0, maxLength).join("");
 }
 
-export function createCore({ store }: Ports) {
+export function createCore({ store, clock, fingerprintSecret }: Ports) {
   async function allowedSite(
     request: SiteRequest,
   ): Promise<SiteRefusal | { outcome: "allowed"; site: Site }> {
@@ -99,6 +113,23 @@ export function createCore({ store }: Ports) {
       await sha256Hex(browserToken),
     );
     return { visitor, browserToken };
+  }
+
+  /**
+   * Who is reacting, in a form nobody can turn back into an IP address
+   * without the day's secret, and not comparable across Sites.
+   */
+  async function fingerprintOf(site: Site, clientIp: string | null) {
+    return hmacSha256Hex(
+      await fingerprintSecret.current(),
+      `${site.id} ${networkOf(clientIp)}`,
+    );
+  }
+
+  async function eraseExpiredFingerprints(): Promise<void> {
+    await store.eraseRateLimitHits(
+      new Date(clock.now().getTime() - rateLimitMemory),
+    );
   }
 
   async function reactionsView(
@@ -163,9 +194,30 @@ export function createCore({ store }: Ports) {
         return { outcome: "reaction-option-not-found" };
       }
 
+      const known = await recognise(site, request.browserToken);
+      const fingerprint = await fingerprintOf(site, request.clientIp);
+      // Counting only what is still remembered makes the limits forget too.
+      await eraseExpiredFingerprints();
+      const hits = await store.countRateLimitHits({
+        siteId: site.id,
+        fingerprint,
+        visitorId: known?.visitor.id ?? null,
+      });
+      if (
+        hits.byVisitor >= reactionLimits.perBrowser ||
+        hits.byFingerprint >= reactionLimits.perFingerprint
+      ) {
+        return { outcome: "rate-limited" };
+      }
+
       const { visitor, browserToken } =
-        (await recognise(site, request.browserToken)) ??
-        (await issueBrowserToken(site));
+        known ?? (await issueBrowserToken(site));
+      await store.recordRateLimitHit({
+        siteId: site.id,
+        fingerprint,
+        visitorId: visitor.id,
+        at: clock.now(),
+      });
       await store.setReaction(page.id, visitor.id, optionId);
 
       return {
@@ -174,6 +226,13 @@ export function createCore({ store }: Ports) {
         ...(await reactionsView(site, page, visitor)),
       };
     },
+
+    /**
+     * Erases what abuse limits remember from over 24 hours ago, fingerprints
+     * included (ADR-0006). Reacting erases first; a daily schedule covers the
+     * days when nobody reacts.
+     */
+    eraseExpiredFingerprints,
   };
 }
 

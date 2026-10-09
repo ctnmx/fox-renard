@@ -13,6 +13,12 @@ import { createApp } from "../src";
 
 export { rectoVerso } from "@fox-renard/db";
 
+/**
+ * Tests tell the client IP in this header, as Cloudflare does in its own
+ * header in production.
+ */
+export const clientIpHeader = "Test-Client-Ip";
+
 /** A second Organization's Site, to show that Sites stay apart. */
 export const anotherSite = {
   name: "Carnets de vélo",
@@ -56,6 +62,11 @@ export async function startTestApi() {
       botCheck,
       fingerprintSecret,
     }),
+    {
+      getConnInfo: (c) => ({
+        remote: { address: c.req.header(clientIpHeader) },
+      }),
+    },
   );
 
   return {

@@ -15,3 +15,17 @@ export function randomHex(byteLength: number): string {
 export async function sha256Hex(text: string): Promise<string> {
   return hex(await crypto.subtle.digest("SHA-256", encoder.encode(text)));
 }
+
+export async function hmacSha256Hex(
+  secret: string,
+  text: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  return hex(await crypto.subtle.sign("HMAC", key, encoder.encode(text)));
+}

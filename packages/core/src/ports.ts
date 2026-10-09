@@ -23,6 +23,22 @@ export interface Store {
     visitorId: string,
     optionId: string | null,
   ): Promise<void>;
+  /** Remembers that a fingerprint and a Visitor did something on a Site. */
+  recordRateLimitHit(hit: RateLimitHit): Promise<void>;
+  /** How many remembered hits a fingerprint and a Visitor have on a Site. */
+  countRateLimitHits(
+    hit: Omit<RateLimitHit, "visitorId" | "at"> & { visitorId: string | null },
+  ): Promise<{ byFingerprint: number; byVisitor: number }>;
+  /** Erases the hits made at or before `cutoff`, fingerprints with them. */
+  eraseRateLimitHits(cutoff: Date): Promise<void>;
+}
+
+export interface RateLimitHit {
+  siteId: string;
+  /** A keyed hash of the client's network, never its IP address (ADR-0006). */
+  fingerprint: string;
+  visitorId: string;
+  at: Date;
 }
 
 export interface Clock {

@@ -1,1 +1,1 @@
-export { type App, createApp } from "./app";
+export { type App, createApp, type Platform } from "./app";
