@@ -9,6 +9,16 @@ Open-source, privacy-first Comments and Reactions for websites: an alternative t
 
 **Status:** in development. V1 is built first for [Recto Verso](https://rectoverso.co); see the [V1 spec](https://github.com/ctnmx/fox-renard/issues/1).
 
+## License
+
+Fox Renard is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). If you modify it and let people use it over a network, you must offer them the source code of your version.
+
+Outside contributors sign a [Contributor License Agreement](CLA.md).
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The project's vocabulary is in [GLOSSARY.md](GLOSSARY.md), and its decisions are in [docs/adr/](docs/adr/).
+
 ## Modules
 
 | Module | Path | Role |
@@ -29,7 +39,8 @@ pnpm --filter @fox-renard/widget build
 pnpm --filter @fox-renard/demo start   # route sheet on http://localhost:4173
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md#run-the-tests-locally) lists the checks CI runs and how to run both test seams.
+`pnpm typecheck`, `pnpm lint`, `pnpm test` (HTTP API), `pnpm e2e` (Widget in
+Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
 
 ## Install the Widget
 
@@ -51,13 +62,3 @@ DATABASE_URL=postgres://… SEED_MEMBER_EMAIL=… pnpm seed
 
 The seed creates Recto Verso's Organization, Member, Site and Reaction Set,
 and changes nothing when run again.
-
-## License
-
-Fox Renard is free software, licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). If you modify it and let people use it over a network, you must offer them the source code of your version.
-
-Outside contributors sign a [Contributor License Agreement](CLA.md).
-
-## Contributing
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The project's vocabulary is in [GLOSSARY.md](GLOSSARY.md), and its decisions are in [docs/adr/](docs/adr/).

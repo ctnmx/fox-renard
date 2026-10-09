@@ -67,18 +67,20 @@ pnpm test
 
 Most tests live here, in `packages/api/test`. They call the HTTP API in-process against real PostgreSQL (PGlite, with the real migrations). Fake adapters stand in for the outside world: an in-memory email outbox, an in-memory Photo store, a controllable clock, a bot-check stub and a fixed fingerprint secret. You need no database server, network access or accounts.
 
-To run one file: `pnpm --filter @fox-renard/api test <file>`.
+To run one file, pass its path relative to `packages/api`: `pnpm test test/widget.test.ts`.
 
 ### Seam 2: the Widget in Chromium
 
 ```sh
-pnpm --filter @fox-renard/demo exec playwright install chromium   # first run only
+pnpm --filter @fox-renard/demo exec playwright install chromium   # first run only, on your machine
 pnpm e2e
 ```
 
+In Claude Code cloud sessions, skip `playwright install`: Chromium is already installed in `/opt/pw-browsers`.
+
 Playwright builds the Widget, starts the demo route sheet, hostile CSS included, and drives the Widget there. The tests live in `apps/demo/tests`.
 
-To run one file: `pnpm --filter @fox-renard/demo e2e <file>`.
+To run one file, pass its path: `pnpm e2e tests/route-sheet.spec.ts`.
 
 ### Before you push
 
