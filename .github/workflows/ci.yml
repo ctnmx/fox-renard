@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Migrations match the schema
+        run: |
+          pnpm --filter @fox-renard/db generate
+          if [ -n "$(git status --porcelain packages/db/migrations)" ]; then
+            git status --short packages/db/migrations
+            echo "::error::schema.ts changed without a migration: run pnpm --filter @fox-renard/db generate and commit it."
+            exit 1
+          fi
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint and format
+        run: pnpm lint
+      - name: Build
+        run: pnpm build
+      - name: Widget size budget
+        run: pnpm size
+
+      - name: "Seam 1: HTTP API"
+        run: pnpm test
+
+      - name: Install Chromium
+        run: pnpm --filter @fox-renard/demo exec playwright install --with-deps chromium
+      - name: "Seam 2: Widget in Chromium"
+        run: pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: apps/demo/test-results/
+          retention-days: 7
