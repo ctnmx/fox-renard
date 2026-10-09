@@ -34,10 +34,6 @@ export class EmailOutbox implements EmailSender {
   async send(email: Email): Promise<void> {
     this.sent.push(email);
   }
-
-  sentTo(address: string): Email[] {
-    return this.sent.filter((email) => email.to === address);
-  }
 }
 
 export class InMemoryPhotoStore implements PhotoStore {

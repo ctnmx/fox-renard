@@ -26,15 +26,15 @@ pnpm --filter @fox-renard/demo start   # route sheet on http://localhost:4173
 `pnpm typecheck`, `pnpm lint`, `pnpm test` (HTTP API), `pnpm e2e` (Widget in
 Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
 
-## Embed
+## Install the Widget
 
 ```html
 <fox-renard-widget site-id="…" page-key="article-{slug}"></fox-renard-widget>
 <script async src="https://…/widget.js"></script>
 ```
 
-The first load of an unknown Page Key from an Allowed Domain (or one of its
-subdomains) creates the Page.
+The first load of an unknown Page Key from an Allowed Domain creates the Page.
+An Allowed Domain matches exactly: `www.` is a domain of its own.
 
 ## Seed a database
 

@@ -23,7 +23,7 @@ export function defineWidgetElement(client: Client): void {
           return;
         }
 
-        // The route sheet stays fast: nothing loads until the Visitor nears the Widget.
+        // Nothing loads until the Visitor nears the Widget, so the Site stays fast.
         this.#observer = new IntersectionObserver(
           (entries) => {
             if (!entries.some((entry) => entry.isIntersecting)) return;

@@ -28,13 +28,13 @@ export function createApp(core: Core) {
     "/v1/sites/:siteId/pages/:pageKey/widget",
     validate(
       "param",
-      z.object({ siteId: z.uuid(), pageKey: z.string().min(1).max(200) }),
+      z.object({ siteId: z.uuid(), pageKey: z.string().min(1).max(500) }),
     ),
     validate(
       "query",
       z.object({
         url: z.url({ protocol: /^https?$/ }).max(2048),
-        title: z.string().max(500),
+        title: z.string().max(10_000),
       }),
     ),
     async (c) => {

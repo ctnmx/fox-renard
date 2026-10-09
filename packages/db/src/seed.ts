@@ -12,8 +12,8 @@ import {
 export const rectoVerso = {
   organizationId: "f451151d-29d5-4aef-b667-26688549afbf",
   siteId: "254bba05-acb2-4d9c-b9fd-f967eb7b539e",
-  /** `localhost` lets the local demo route sheet load the Widget. */
-  allowedDomains: ["rectoverso.co", "localhost"],
+  /** rectoverso.co redirects to www; `localhost` serves the local demo route sheet. */
+  allowedDomains: ["rectoverso.co", "www.rectoverso.co", "localhost"],
   reactionSet: {
     prompt: "Alors, cet itinéraire ?",
     options: [

@@ -32,7 +32,7 @@ const widgetScript = fileURLToPath(
   import.meta.resolve("@fox-renard/widget/widget.js"),
 );
 
-const foxRenard = new Hono()
+const apiAndWidgetScript = new Hono()
   .get("/widget.js", async (c) =>
     c.body(await readFile(widgetScript), 200, {
       "Content-Type": "text/javascript; charset=utf-8",
@@ -62,6 +62,9 @@ const routeSheetSite = new Hono()
     ),
   );
 
-serve({ fetch: foxRenard.fetch, port: Number(new URL(apiOrigin).port) });
+serve({
+  fetch: apiAndWidgetScript.fetch,
+  port: Number(new URL(apiOrigin).port),
+});
 serve({ fetch: routeSheetSite.fetch, port: Number(new URL(siteOrigin).port) });
 console.log(`Route sheet on ${siteOrigin}, API and Widget on ${apiOrigin}`);

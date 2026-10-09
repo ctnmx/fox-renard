@@ -1,4 +1,4 @@
-import type { Page, Picto } from "./model";
+import type { Page, ReactionOption } from "./model";
 import type { Ports } from "./ports";
 
 export interface WidgetRequest {
@@ -10,30 +10,22 @@ export interface WidgetRequest {
   title: string;
 }
 
-export interface CountedReactionOption {
-  id: string;
-  picto: Picto;
-  label: string;
-  count: number;
-}
-
-export interface WidgetData {
-  page: Page;
-  reactionSet: { prompt: string; options: CountedReactionOption[] };
-}
+export type CountedReactionOption = ReactionOption & { count: number };
 
 export type WidgetResult =
-  | ({ outcome: "loaded" } & WidgetData)
+  | {
+      outcome: "loaded";
+      page: Page;
+      reactionSet: { prompt: string; options: CountedReactionOption[] };
+    }
   | { outcome: "site-not-found" }
   | { outcome: "domain-not-allowed" };
 
-/** An Allowed Domain also allows its subdomains, such as `www.`. */
-function isAllowed(domain: string | null, allowedDomains: string[]): boolean {
-  if (domain === null) return false;
-  const requesting = domain.toLowerCase();
-  return allowedDomains.some(
-    (allowed) => requesting === allowed || requesting.endsWith(`.${allowed}`),
-  );
+const maxPageTitleLength = 500;
+
+function shorten(text: string, maxLength: number): string {
+  // By code point, so an emoji is never cut in half.
+  return Array.from(text).slice(0, maxLength).join("");
 }
 
 export function createCore({ store }: Ports) {
@@ -42,14 +34,16 @@ export function createCore({ store }: Ports) {
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
       const site = await store.findSite(request.siteId);
       if (!site) return { outcome: "site-not-found" };
-      if (!isAllowed(request.domain, site.allowedDomains)) {
+
+      const domain = request.domain?.toLowerCase();
+      if (!domain || !site.allowedDomains.includes(domain)) {
         return { outcome: "domain-not-allowed" };
       }
 
       const page = await store.findOrCreatePage(site.id, {
         key: request.pageKey,
         url: request.url,
-        title: request.title,
+        title: shorten(request.title, maxPageTitleLength),
       });
 
       return {
