@@ -2,31 +2,33 @@
 
 Version 1.0
 
+This file is the text You sign through CLA Assistant. Any change to it gets a new version number, and CLA Assistant then asks contributors to sign the new version.
+
 **In short** (this summary is not part of the agreement): you keep the copyright in what you contribute. You give the Maintainer a permanent license to use it, including the right to release it under licenses other than AGPL-3.0, such as a commercial license. You confirm the work is yours to give. You sign once, and it covers all your contributions.
 
 ## The agreement
 
-This agreement is between **You**, the person or legal entity making a Contribution, and **the Maintainer**: the owner of the Fox Renard project, today the holder of the GitHub account `ctnmx` that owns <https://github.com/ctnmx/fox-renard>, together with any person or legal entity to whom the Maintainer transfers the project.
+This agreement is between **You**, the person or legal entity making a Contribution, and **the Maintainer**: the owner of the Fox Renard project, today the holder of the GitHub account `ctnmx` that owns <https://github.com/ctnmx/fox-renard>, or any person or legal entity to whom the Maintainer transfers this agreement under section 9.
 
 It lets the Maintainer distribute Fox Renard under the GNU Affero General Public License version 3 (AGPL-3.0) and, alongside it, under commercial or other license terms.
 
 ### 1. Definitions
 
-**Contribution**: any original work of authorship, including any change or addition to an existing work, that You intentionally submit to the Maintainer for inclusion in Fox Renard, by pull request, patch, issue, comment or any other means of electronic, verbal or written communication sent to the Maintainer or the project's repositories. Anything You clearly mark in writing as "Not a Contribution" is excluded.
+**Contribution**: any original work of authorship, including any change or addition to an existing work, that You intentionally submit to the Maintainer for inclusion in Fox Renard, by pull request, patch, issue or any other means of electronic, verbal or written communication sent to the Maintainer or the project's repositories. Anything You clearly mark in writing as "Not a Contribution" is excluded.
 
 **Fox Renard**: the software, documentation and other material in the Fox Renard project's repositories.
 
 ### 2. Copyright license
 
-You grant the Maintainer, and recipients of software distributed by the Maintainer, a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense and distribute Your Contributions and such derivative works.
+You grant the Maintainer, and recipients of software distributed by the Maintainer, a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense (through multiple tiers of sublicensees) and distribute Your Contributions and such derivative works.
 
 The Maintainer may exercise and sublicense these rights **under any license terms**, including the AGPL-3.0, other open-source licenses, and commercial or proprietary licenses.
 
 ### 3. Patent license
 
-You grant the Maintainer, and recipients of software distributed by the Maintainer, a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import and otherwise transfer the work. This license covers only the patent claims You can license that are necessarily infringed by Your Contributions alone, or by Your Contributions combined with the work to which You submitted them.
+You grant the Maintainer, its sublicensees, and recipients of software distributed by any of them, a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable (except as stated in this section) patent license to make, have made, use, offer to sell, sell, import and otherwise transfer Fox Renard. This license covers only the patent claims You can license that are necessarily infringed by Your Contributions alone, or by Your Contributions combined with Fox Renard.
 
-If any entity starts patent litigation against You or anyone else, including a cross-claim or counterclaim, alleging that Your Contribution, or the work to which You contributed, infringes a patent, every patent license You granted to that entity under this agreement ends on the date that litigation is filed.
+If any entity starts patent litigation against You or anyone else, including a cross-claim or counterclaim, alleging that Your Contribution, or Fox Renard, infringes a patent, every patent license You granted to that entity under this agreement ends on the date that litigation is filed.
 
 ### 4. You keep your rights
 
@@ -39,7 +41,7 @@ You represent that:
 1. You are legally entitled to grant the licenses above.
 2. If an employer or anyone else has rights in what You create, including in Your Contributions, You have their permission to make Contributions on their behalf, or they have waived those rights for Your Contributions.
 3. If You contribute on behalf of a legal entity, You are authorized to accept this agreement on its behalf, and "You" then means that entity.
-4. Each Contribution is Your original creation, except for material You identify as described in section 6.
+4. Each Contribution is Your original creation. Section 6 covers work that is not.
 5. To Your knowledge, Your Contributions do not infringe anyone else's rights.
 
 ### 6. Third-party material
@@ -56,6 +58,10 @@ The Maintainer is not required to include Your Contributions in Fox Renard. You 
 
 Unless required by applicable law or agreed in writing, You provide Your Contributions on an "as is" basis, without warranties or conditions of any kind, express or implied, including warranties or conditions of title, non-infringement, merchantability or fitness for a particular purpose.
 
-### 9. Acceptance
+### 9. Transfer
+
+The Maintainer may transfer this agreement, with the licenses You granted under it, to any person or legal entity that takes over Fox Renard.
+
+### 10. Acceptance
 
 You accept this agreement by signing it with Your GitHub account through CLA Assistant. Once accepted, it applies to every Contribution You have made or will make to Fox Renard.

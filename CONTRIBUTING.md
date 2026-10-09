@@ -10,19 +10,18 @@ Fox Renard is licensed under AGPL-3.0. Outside contributors sign the [Contributo
 
 - **When:** on your first pull request, the CLA Assistant bot comments with a link. You can also sign ahead of time at <https://cla-assistant.io/ctnmx/fox-renard>.
 - **How:** sign in with your GitHub account and accept. Signing once covers all your future contributions. If the CLA text changes, the bot asks you to sign the new version.
-- **Check:** the `license/cla` check stays pending, and blocks the merge, until every commit author in the pull request has signed.
-- **Commit as yourself:** the check matches each commit's author email to a GitHub account. Commit with an email linked to your account, or the check cannot tell who you are. If a tool commits for you under its own account, sign anyway: the maintainer checks that the pull request's author has signed before merging.
-
-The maintainer and bots are exempt from the check.
+- **Check:** the `license/cla` check stays pending, and blocks the merge, until every commit author in the pull request has signed, apart from those exempt below.
+- **Commit as yourself:** the check matches each commit's author email to a GitHub account. Commit with an email linked to your account, or the check cannot tell who you are.
+- **Exempt:** the maintainer, bots, and commits that Claude Code on the web authors as `claude`. If a tool commits for you under such an account, sign anyway: the maintainer merges only once the pull request's author has signed.
 
 ## How work flows
 
 Work moves through four steps: **grill, spec, tickets, implement**. Each step has a Claude Code skill in [`.claude/skills/`](.claude/skills/). You can follow the same steps by hand.
 
-1. **Grill.** A relentless interview settles every decision behind an idea, one round of questions at a time (`/grill-with-docs`). New terms go into `GLOSSARY.md`. Decisions that are hard to reverse become ADRs in `docs/adr/`.
-2. **Spec.** The settled design is written up as a spec and published as a GitHub issue (`/to-spec`). [Issue #1](https://github.com/ctnmx/fox-renard/issues/1) is the V1 spec.
-3. **Tickets.** The spec is split into tickets (`/to-tickets`). Each ticket is a thin vertical slice that works end to end. It is a sub-issue of its spec and lists the tickets that block it. Triage labels say who can pick it up: `ready-for-agent` or `ready-for-human`.
-4. **Implement.** One ticket becomes one pull request (`/implement`). The work is built test-first at the test seams below (`/tdd`), then reviewed against the repository's standards and the ticket (`/code-review`).
+1. **Grill.** A relentless interview settles every decision behind an idea, one round of questions at a time (`/grill-with-docs`). It adds new terms to `GLOSSARY.md`. It records a decision as an ADR in `docs/adr/` when the decision is hard to reverse, surprising without context, and the result of a real trade-off.
+2. **Spec.** `/to-spec` writes the settled design up as a spec and publishes it as a GitHub issue. [Issue #1](https://github.com/ctnmx/fox-renard/issues/1) is the V1 spec.
+3. **Tickets.** `/to-tickets` splits the spec into tickets. Each ticket is a thin vertical slice that works end to end, a sub-issue of its spec, linked to the tickets that block it. Its triage label says who can pick it up: `ready-for-agent` or `ready-for-human` (`/triage`).
+4. **Implement.** Each ticket is built on its own branch (`/implement`): test-first at the test seams below (`/tdd`), then reviewed against the repository's standards and the ticket (`/code-review`). It reaches `main` through one pull request.
 
 Have an idea or found a bug? Open an issue before writing a large change, so it can be grilled and specced first. To pick up existing work, choose an open ticket with no open blocker.
 
@@ -30,10 +29,7 @@ Have an idea or found a bug? Open an issue before writing a large change, so it 
 
 - Every change reaches `main` through a pull request. Nobody pushes to `main` directly, force-pushes it or deletes it.
 - One pull request implements one ticket, and its description says `Closes #<ticket>`.
-- A pull request merges only when:
-  - every CI check below passes;
-  - the `license/cla` check passes, for outside contributors;
-  - every review conversation is resolved.
+- A pull request merges only when every CI check below passes, and, for outside contributors, the `license/cla` check too.
 - The maintainer reviews and merges.
 - Commit messages start with a [Conventional Commits](https://www.conventionalcommits.org/) type: `feat:`, `fix:`, `docs:`, `test:`, `chore:`.
 
@@ -77,7 +73,7 @@ pnpm exec playwright install chromium   # first run only
 pnpm test:browser
 ```
 
-Playwright drives the Widget and the Counter on a demo page that mimics a Recto Verso route sheet, hostile CSS included.
+Playwright drives the Widget and the Counter on a demo route sheet modelled on Recto Verso's, hostile CSS included.
 
 To run a single test file at either seam, pass its path: `pnpm test <file>` or `pnpm test:browser <file>`.
 
@@ -91,4 +87,5 @@ pnpm lint
 pnpm test
 pnpm test:browser
 pnpm build
+pnpm size   # the Widget size budget
 ```
