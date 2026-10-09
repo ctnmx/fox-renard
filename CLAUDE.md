@@ -7,7 +7,7 @@ First customer: rectoverso.co (Webflow), migrating from Hyvor Talk.
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues on `ctnmx/renard-fox`. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues on `ctnmx/fox-renard`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

@@ -47,4 +47,4 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 ## Cloud sessions without `gh`
 
-Claude Code cloud sessions may not have the `gh` CLI. There, use the GitHub MCP tools (`mcp__github__*`) on `ctnmx/renard-fox` for the same operations: `issue_write` to create, edit, label and close; `issue_read` to read; `list_issues` / `search_issues` to list; `add_issue_comment` to comment; `sub_issue_write` for sub-issues. A label missing from the repo is created by GitHub the first time it is applied through the API; if that fails, ask the user to run `gh label create` locally.
+Claude Code cloud sessions may not have the `gh` CLI. There, use the GitHub MCP tools (`mcp__github__*`) on `ctnmx/fox-renard` for the same operations: `issue_write` to create, edit, label and close; `issue_read` to read; `list_issues` / `search_issues` to list; `add_issue_comment` to comment; `sub_issue_write` for sub-issues. The MCP tools cannot create labels and refuse a label missing from the repo: ask the user to create it (GitHub UI, or `gh label create` locally) and mention the intended label in the issue body meanwhile.
