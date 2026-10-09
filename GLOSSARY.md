@@ -46,6 +46,10 @@ _Avoid_: Anonymous, Unverified user
 A Commenter who confirmed their email address on that Site through a link sent by email. Their Reactions and Votes count as verified.
 _Avoid_: Registered user, Logged-in user, Member
 
+**Blocked Commenter**:
+A Commenter a Member has barred from posting further Comments on a Site.
+_Avoid_: Banned user, Shadow-banned user
+
 ## Conversation
 
 **Comment**:
@@ -85,3 +89,13 @@ _Avoid_: Emoji, Reaction type
 **Reaction**:
 A Visitor's single, changeable choice of one Reaction Option on a Page.
 _Avoid_: Like, Rating, Emoji
+
+## Embedded elements
+
+**Widget**:
+The Fox Renard element a Site places on a Page to show its Reaction Set and Comments.
+_Avoid_: Embed, Plugin, Comment box
+
+**Counter**:
+A small Fox Renard element showing a Page's Comment count or one Reaction Option's count elsewhere on the Site, such as on listing cards.
+_Avoid_: Count embed, Badge
