@@ -46,18 +46,24 @@ export async function startDemo(): Promise<void> {
 
   const siteFolder = new URL("../site/", import.meta.url);
 
+  // Like Recto Verso's Webflow template, every route sheet embeds the Widget
+  // with the Page Key `article-{slug}`.
+  async function routeSheet(slug: string) {
+    const html = await readFile(
+      new URL("route-sheet.html", siteFolder),
+      "utf8",
+    );
+    return html
+      .replaceAll("{{API_ORIGIN}}", apiOrigin)
+      .replaceAll("{{SITE_ID}}", rectoVerso.siteId)
+      .replaceAll("{{PAGE_KEY}}", `article-${slug}`);
+  }
+
   const routeSheetSite = new Hono()
-    .get("/", async (c) => {
-      const html = await readFile(
-        new URL("route-sheet.html", siteFolder),
-        "utf8",
-      );
-      return c.html(
-        html
-          .replaceAll("{{API_ORIGIN}}", apiOrigin)
-          .replaceAll("{{SITE_ID}}", rectoVerso.siteId),
-      );
-    })
+    .get("/", async (c) => c.html(await routeSheet("le-tour-du-mont-aiguille")))
+    .get("/article/:slug{[a-z0-9-]+}", async (c) =>
+      c.html(await routeSheet(c.req.param("slug"))),
+    )
     .get("/:stylesheet{[a-z-]+\\.css}", async (c) =>
       c.body(
         await readFile(new URL(c.req.param("stylesheet"), siteFolder)),
