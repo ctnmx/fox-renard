@@ -1,0 +1,115 @@
+body {
+  margin: 0;
+  background: #f6f3ee;
+  color: #222;
+  font-family: "Trebuchet MS", "Helvetica Neue", Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 32px;
+  background: #fff;
+}
+
+.brand {
+  color: #1d4d3a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 24px;
+}
+
+.nav-link {
+  color: #222;
+  text-decoration: none;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-end;
+  height: 360px;
+  background: linear-gradient(160deg, #6b8f71 0%, #2f4f3f 100%);
+}
+
+.hero-inner {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px;
+  width: 100%;
+  color: #fff;
+}
+
+.tag {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  margin: 8px 0 0;
+  font-size: 44px;
+  line-height: 1.1;
+}
+
+.sheet {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.fact {
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.fact-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.fact-label {
+  color: #666;
+  font-size: 14px;
+}
+
+.rich-text .heading {
+  margin: 40px 0 12px;
+  font-size: 26px;
+  text-transform: none;
+}
+
+.rich-text .paragraph {
+  margin: 0 0 16px;
+  font-size: 17px;
+  text-transform: none;
+}
+
+.rich-text .sheet-link {
+  color: #1d6f42;
+}
+
+.w-embed {
+  margin-top: 48px;
+}
+
+.footer {
+  padding: 32px;
+  color: #666;
+  text-align: center;
+}

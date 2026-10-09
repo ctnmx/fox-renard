@@ -6,6 +6,7 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
 - **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
+- **List a spec's tickets** (titles only, a few hundred characters): `gh api repos/ctnmx/fox-renard/issues/<parent>/sub_issues --jq '.[] | "#\(.number) \(.title)"'`. Read the bodies you need one by one.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
 - **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
 - **Comment on an issue**: `gh issue comment <number> --body "..."`
@@ -45,6 +46,6 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
 
-## Cloud sessions without `gh`
+## Cloud sessions
 
-Claude Code cloud sessions may not have the `gh` CLI. There, use the GitHub MCP tools (`mcp__github__*`) on `ctnmx/fox-renard` for the same operations: `issue_write` to create, edit, label and close; `issue_read` to read; `list_issues` / `search_issues` to list; `add_issue_comment` to comment; `sub_issue_write` for sub-issues. The MCP tools cannot create labels and refuse a label missing from the repo: ask the user to create it (GitHub UI, or `gh label create` locally) and mention the intended label in the issue body meanwhile.
+Claude Code cloud sessions refuse GitHub's GraphQL API, which `gh issue` and `gh pr` use, so those commands fail there. `gh api` with REST paths (`repos/ctnmx/fox-renard/...`, as in **List a spec's tickets**) works, and so do the GitHub MCP tools (`mcp__github__*`) on `ctnmx/fox-renard` for the same operations: `issue_write` to create, edit, label and close; `issue_read` to read (its `get_sub_issues` returns every ticket's full body, so list a spec's tickets with `gh api` instead); `list_issues` / `search_issues` to list; `add_issue_comment` to comment; `sub_issue_write` for sub-issues. The MCP tools cannot create labels and refuse a label missing from the repo: ask the user to create it (GitHub UI, or `gh label create` locally) and mention the intended label in the issue body meanwhile.

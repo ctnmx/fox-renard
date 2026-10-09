@@ -1,0 +1,26 @@
+{
+  "name": "@fox-renard/demo",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "tsx src/server.ts",
+    "e2e": "pnpm --filter @fox-renard/widget build && playwright test",
+    "screenshot": "pnpm --filter @fox-renard/widget build && tsx src/screenshot.ts"
+  },
+  "dependencies": {
+    "@fox-renard/api": "workspace:*",
+    "@fox-renard/core": "workspace:*",
+    "@fox-renard/db": "workspace:*",
+    "@fox-renard/widget": "workspace:*",
+    "@hono/node-server": "catalog:",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
