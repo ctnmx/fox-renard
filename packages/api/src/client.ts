@@ -1,6 +1,8 @@
 import { hc, type InferResponseType } from "hono/client";
 import type { App } from "./app";
 
+export type { CommentSort, Vote } from "@fox-renard/core";
+
 /** The typed client the Widget and the console use to call the HTTP API. */
 export function createClient(baseUrl: string) {
   return hc<App>(baseUrl);

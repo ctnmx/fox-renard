@@ -1,4 +1,4 @@
-import type { Page, Store } from "@fox-renard/core";
+import type { Page, Store, Vote } from "@fox-renard/core";
 import { and, count, desc, eq, lte, or, type SQL, sql } from "drizzle-orm";
 import type { Database } from "./database";
 import {
@@ -8,6 +8,7 @@ import {
   rateLimitHits,
   reactions,
   visitors,
+  votes,
 } from "./schema";
 
 export function createStore(db: Database): Store {
@@ -26,6 +27,13 @@ export function createStore(db: Database): Store {
     return page;
   }
 
+  /** How many Visitors hold `vote` on the Comment of the row being read. */
+  function countOf(vote: Vote) {
+    return sql<number>`(select count(*) from ${votes} where ${votes.commentId} = ${comments.id} and ${votes.direction} = ${vote})`.mapWith(
+      Number,
+    );
+  }
+
   function selectComments() {
     return db
       .select({
@@ -37,6 +45,7 @@ export function createStore(db: Database): Store {
         topLevelCommentId: comments.topLevelCommentId,
         text: comments.text,
         createdAt: comments.createdAt,
+        voteCounts: { up: countOf("up"), down: countOf("down") },
       })
       .from(comments)
       .innerJoin(commenters, eq(commenters.id, comments.commenterId))
@@ -218,11 +227,42 @@ export function createStore(db: Database): Store {
         .orderBy(desc(comments.createdAt), desc(comments.id));
     },
 
+    async findVotes(pageId, visitorId) {
+      const held = await db
+        .select({ commentId: votes.commentId, vote: votes.direction })
+        .from(votes)
+        .innerJoin(comments, eq(comments.id, votes.commentId))
+        .where(
+          and(eq(comments.pageId, pageId), eq(votes.visitorId, visitorId)),
+        );
+      return new Map(held.map(({ commentId, vote }) => [commentId, vote]));
+    },
+
+    async setVote(commentId, visitorId, vote) {
+      const ofVisitorOnComment = and(
+        eq(votes.commentId, commentId),
+        eq(votes.visitorId, visitorId),
+      );
+      if (vote === null) {
+        await db.delete(votes).where(ofVisitorOnComment);
+        return;
+      }
+      // The primary key keeps one Vote per Visitor and Comment, even when
+      // two requests from one browser race.
+      await db
+        .insert(votes)
+        .values({ commentId, visitorId, direction: vote })
+        .onConflictDoUpdate({
+          target: [votes.commentId, votes.visitorId],
+          set: { direction: vote },
+        });
+    },
+
     async recordRateLimitHit(hit) {
       await db.insert(rateLimitHits).values(hit);
     },
 
-    async countRateLimitHits({ siteId, fingerprint, visitorId }) {
+    async countRateLimitHits({ siteId, action, fingerprint, visitorId }) {
       const ofFingerprint = eq(rateLimitHits.fingerprint, fingerprint);
       const ofVisitor = visitorId
         ? eq(rateLimitHits.visitorId, visitorId)
@@ -236,7 +276,11 @@ export function createStore(db: Database): Store {
         })
         .from(rateLimitHits)
         .where(
-          and(eq(rateLimitHits.siteId, siteId), or(ofFingerprint, ofVisitor)),
+          and(
+            eq(rateLimitHits.siteId, siteId),
+            eq(rateLimitHits.action, action),
+            or(ofFingerprint, ofVisitor),
+          ),
         );
       return counts ?? { byFingerprint: 0, byVisitor: 0 };
     },

@@ -1,12 +1,26 @@
-import type { WidgetData } from "@fox-renard/api/client";
+import type { CommentSort, Vote, WidgetData } from "@fox-renard/api/client";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { locale, type MessageKey, t } from "./i18n";
 import { relativeDate } from "./relative-date";
-import { type PageConnection, postComment, Refused } from "./requests";
+import { type PageConnection, postComment, putVote, Refused } from "./requests";
 
 type TopLevelComment = WidgetData["comments"][number];
 type Comment = TopLevelComment["replies"][number];
 type Posted = Awaited<ReturnType<typeof postComment>>;
+type Voted = Pick<Comment, "voteCounts" | "vote">;
+type OnVoted = (commentId: string, voted: Voted) => void;
+
+/** The label of each order the Visitor can list Comments in. */
+const sortLabels: Record<CommentSort, MessageKey> = {
+  top: "sortTop",
+  newest: "sortNewest",
+  oldest: "sortOldest",
+};
+
+const votes = [
+  { vote: "up", picto: "👍", label: "voteUp" },
+  { vote: "down", picto: "👎", label: "voteDown" },
+] as const satisfies { vote: Vote; picto: string; label: MessageKey }[];
 
 /** What the Visitor reads when Core refuses their Comment, by error code. */
 const refusals: Record<string, MessageKey> = {
@@ -33,6 +47,70 @@ export function withPosted(
   );
 }
 
+/**
+ * A Page's Comments once the browser's Vote on one of them counts. Nothing
+ * moves, so the Comment stays under the Visitor's finger.
+ */
+export function withVote(
+  comments: TopLevelComment[],
+  commentId: string,
+  { voteCounts, vote }: Voted,
+): TopLevelComment[] {
+  const voted = <C extends Comment>(comment: C): C =>
+    comment.id === commentId ? { ...comment, voteCounts, vote } : comment;
+  return comments.map((topLevel) => ({
+    ...voted(topLevel),
+    replies: topLevel.replies.map(voted),
+  }));
+}
+
+function Votes({
+  page,
+  comment,
+  onVoted,
+}: {
+  page: PageConnection;
+  comment: Comment;
+  onVoted: OnVoted;
+}) {
+  // One request at a time, so a double tap cannot issue two browser tokens.
+  const voting = useRef(false);
+
+  async function choose(vote: Vote) {
+    if (voting.current) return;
+    voting.current = true;
+    try {
+      // Tapping the Vote the Visitor holds withdraws it.
+      onVoted(
+        comment.id,
+        await putVote(page, comment.id, vote === comment.vote ? null : vote),
+      );
+    } catch (error) {
+      console.error(error);
+    } finally {
+      voting.current = false;
+    }
+  }
+
+  return (
+    <span class="votes">
+      {votes.map(({ vote, picto, label }) => (
+        <button
+          key={vote}
+          class="vote"
+          type="button"
+          aria-pressed={vote === comment.vote}
+          aria-label={t(label, { count: String(comment.voteCounts[vote]) })}
+          onClick={() => choose(vote)}
+        >
+          <span aria-hidden="true">{picto}</span>
+          {comment.voteCounts[vote]}
+        </button>
+      ))}
+    </span>
+  );
+}
+
 function Body({ body }: Pick<Comment, "body">) {
   return (
     <p class="body">
@@ -50,10 +128,14 @@ function Body({ body }: Pick<Comment, "body">) {
 }
 
 function CommentArticle({
+  page,
   comment,
+  onVoted,
   onReply,
 }: {
+  page: PageConnection;
   comment: Comment;
+  onVoted: OnVoted;
   /** Opens a Reply to this Comment; `opener` gets the focus back once it closes. */
   onReply: (opener: HTMLButtonElement) => void;
 }) {
@@ -73,13 +155,16 @@ function CommentArticle({
           </time>
         </p>
         <Body body={comment.body} />
-        <button
-          class="reply"
-          type="button"
-          onClick={(event) => onReply(event.currentTarget)}
-        >
-          {t("reply")}
-        </button>
+        <div class="comment-actions">
+          <Votes page={page} comment={comment} onVoted={onVoted} />
+          <button
+            class="reply"
+            type="button"
+            onClick={(event) => onReply(event.currentTarget)}
+          >
+            {t("reply")}
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -203,9 +288,16 @@ export function Comments({
   page,
   commenter,
   comments,
+  sort,
+  onSort,
+  onVoted,
   onPosted,
 }: Pick<WidgetData, "commenter" | "comments"> & {
   page: PageConnection;
+  /** The order of the top-level Comments; Replies stay oldest first. */
+  sort: CommentSort;
+  onSort: (sort: CommentSort) => void;
+  onVoted: OnVoted;
   onPosted: (posted: Posted) => void;
 }) {
   // The browser's Commenter fills in the display name, so it is typed once.
@@ -226,6 +318,25 @@ export function Comments({
         onDisplayName={setDisplayName}
         onPosted={onPosted}
       />
+      {comments.length > 1 && (
+        <label class="sort">
+          {t("sortBy")}
+          <select
+            class="sort-select"
+            value={sort}
+            // The select offers the three orders only.
+            onChange={(event) =>
+              onSort(event.currentTarget.value as CommentSort)
+            }
+          >
+            {Object.entries(sortLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {t(label)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <ol class="comment-list">
         {comments.map((topLevel) => {
           const openReplyTo =
@@ -234,7 +345,9 @@ export function Comments({
           return (
             <li key={topLevel.id}>
               <CommentArticle
+                page={page}
                 comment={topLevel}
+                onVoted={onVoted}
                 onReply={openReplyTo(topLevel)}
               />
               {topLevel.replies.length > 0 && (
@@ -247,7 +360,9 @@ export function Comments({
                   {topLevel.replies.map((reply) => (
                     <li key={reply.id}>
                       <CommentArticle
+                        page={page}
                         comment={reply}
+                        onVoted={onVoted}
                         onReply={openReplyTo(reply)}
                       />
                     </li>

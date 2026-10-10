@@ -326,3 +326,62 @@ test.describe("Replies on a route sheet", () => {
     await expect(reply).toBeFocused();
   });
 });
+
+test.describe("Votes and sorting on a route sheet", () => {
+  test("a Visitor votes on a Comment, changes their Vote, and switches between the three sort orders", async ({
+    page,
+  }) => {
+    // A route sheet of its own, so it starts with no Comment.
+    await page.goto(`/article/essai-${randomUUID()}`);
+    let widget = await scrollToWidget(page);
+    for (const text of ["Première.", "Deuxième.", "Troisième."]) {
+      await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+      await widget.getByRole("textbox", { name: "Ton commentaire" }).fill(text);
+      await widget.getByRole("button", { name: "Publier" }).click();
+      await expect(widget.getByText(text)).toBeVisible();
+    }
+    const comment = (text: string) =>
+      widget.getByRole("article").filter({ hasText: text });
+    const up = (text: string) =>
+      comment(text).getByRole("button", { name: /^Voter pour/ });
+    const down = (text: string) =>
+      comment(text).getByRole("button", { name: /^Voter contre/ });
+
+    await up("Deuxième.").click();
+    await expect(up("Deuxième.")).toHaveAttribute("aria-pressed", "true");
+    await expect(up("Deuxième.")).toContainText("1");
+
+    // Voting down moves the Vote.
+    await down("Deuxième.").click();
+    await expect(down("Deuxième.")).toHaveAttribute("aria-pressed", "true");
+    await expect(up("Deuxième.")).toHaveAttribute("aria-pressed", "false");
+    await expect(up("Deuxième.")).toContainText("0");
+    await expect(down("Deuxième.")).toContainText("1");
+
+    // Top, the default, lists the down-voted Comment last.
+    await page.reload();
+    widget = await scrollToWidget(page);
+    await expect(down("Deuxième.")).toHaveAttribute("aria-pressed", "true");
+    const sort = widget.getByRole("combobox", { name: "Trier par" });
+    await expect(sort).toHaveValue("top");
+    const order = [/Troisième/, /Première/, /Deuxième/];
+    await expect(widget.getByRole("article")).toHaveText(order);
+
+    await sort.selectOption({ label: "Plus récents" });
+    await expect(widget.getByRole("article")).toHaveText([
+      /Troisième/,
+      /Deuxième/,
+      /Première/,
+    ]);
+
+    await sort.selectOption({ label: "Plus anciens" });
+    await expect(widget.getByRole("article")).toHaveText([
+      /Première/,
+      /Deuxième/,
+      /Troisième/,
+    ]);
+
+    await sort.selectOption({ label: "Top" });
+    await expect(widget.getByRole("article")).toHaveText(order);
+  });
+});

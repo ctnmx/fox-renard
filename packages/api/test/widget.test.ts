@@ -71,6 +71,7 @@ describe("Widget data for a Page", () => {
       },
       reaction: null,
       commenter: null,
+      sort: "top",
       comments: [],
     });
   });

@@ -5,6 +5,7 @@ import type {
   Reaction,
   Site,
   Visitor,
+  Vote,
 } from "./model";
 
 /** Storage of domain data. */
@@ -50,11 +51,20 @@ export interface Store {
   findComment(pageId: string, commentId: string): Promise<Comment | null>;
   /** A Page's Comments and Replies, newest first. */
   listComments(pageId: string): Promise<Comment[]>;
+  /** The Votes a Visitor holds on a Page's Comments and Replies, by Comment id. */
+  findVotes(pageId: string, visitorId: string): Promise<Map<string, Vote>>;
+  /** Sets a Visitor's one Vote on a Comment; `null` withdraws it. */
+  setVote(
+    commentId: string,
+    visitorId: string,
+    vote: Vote | null,
+  ): Promise<void>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;
-  /** How many remembered hits a fingerprint and a Visitor each have on a Site. */
+  /** How many remembered hits of one action a fingerprint and a Visitor each have on a Site. */
   countRateLimitHits(of: {
     siteId: string;
+    action: RateLimitedAction;
     fingerprint: string;
     visitorId: string | null;
   }): Promise<{ byFingerprint: number; byVisitor: number }>;
@@ -62,8 +72,12 @@ export interface Store {
   eraseRateLimitHits(cutoff: Date): Promise<void>;
 }
 
+/** What abuse limits count apart, each against limits of its own. */
+export type RateLimitedAction = "reaction" | "vote";
+
 export interface RateLimitHit {
   siteId: string;
+  action: RateLimitedAction;
   /** A keyed hash of the client's network, never its IP address (ADR-0006). */
   fingerprint: string;
   visitorId: string;

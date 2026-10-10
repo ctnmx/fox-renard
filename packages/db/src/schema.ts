@@ -155,13 +155,37 @@ export const comments = pgTable(
   (table) => [index().on(table.pageId, table.createdAt)],
 );
 
-/** What abuse limits remember of recent Reactions, for 24 hours at most (ADR-0006). */
+/** A Visitor's one Vote on a Comment or a Reply. */
+export const votes = pgTable(
+  "votes",
+  {
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    visitorId: uuid("visitor_id")
+      .notNull()
+      .references(() => visitors.id, { onDelete: "cascade" }),
+    direction: text("direction", { enum: ["up", "down"] }).notNull(),
+    createdAt: createdAt(),
+  },
+  // One Vote per Visitor and Comment.
+  (table) => [primaryKey({ columns: [table.commentId, table.visitorId] })],
+);
+
+/** What abuse limits remember of recent Reactions and Votes, for 24 hours at most (ADR-0006). */
 export const rateLimitHits = pgTable(
   "rate_limit_hits",
   {
     siteId: uuid("site_id")
       .notNull()
       .references(() => sites.id, { onDelete: "cascade" }),
+    /**
+     * Each action counts against limits of its own. Hits recorded before
+     * Votes existed were all Reactions.
+     */
+    action: text("action", { enum: ["reaction", "vote"] })
+      .notNull()
+      .default("reaction"),
     /** A keyed hash of the client's network, never its IP address. */
     fingerprint: text("fingerprint").notNull(),
     visitorId: uuid("visitor_id")

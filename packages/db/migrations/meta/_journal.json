@@ -29,6 +29,13 @@
       "when": 1791644470699,
       "tag": "0003_replies",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791651396691,
+      "tag": "0004_votes",
+      "breakpoints": true
     }
   ]
 }
