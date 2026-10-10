@@ -36,3 +36,17 @@ export interface Visitor {
 export interface Reaction {
   optionId: string;
 }
+
+/** A Visitor who posted on a Site under a display name, on that Site only (ADR-0005). */
+export interface Commenter {
+  id: string;
+  displayName: string;
+}
+
+/** A message a Commenter posted on a Page, in plain text. */
+export interface Comment {
+  id: string;
+  author: Commenter;
+  text: string;
+  createdAt: Date;
+}

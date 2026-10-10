@@ -1,5 +1,13 @@
+import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
-import type { Page, Reaction, ReactionOption, Site, Visitor } from "./model";
+import type {
+  Comment,
+  Page,
+  Reaction,
+  ReactionOption,
+  Site,
+  Visitor,
+} from "./model";
 import { networkOf } from "./network";
 import type { Ports } from "./ports";
 
@@ -29,6 +37,11 @@ export interface ReactionRequest extends PageRequest {
   optionId: string | null;
 }
 
+export interface CommentRequest extends PageRequest {
+  displayName: string;
+  text: string;
+}
+
 export type CountedReactionOption = ReactionOption & { count: number };
 
 export interface CountedReactionSet {
@@ -43,12 +56,28 @@ interface ReactionsView {
   reaction: Reaction | null;
 }
 
+/** A Comment as Visitors read it. */
+export interface CommentView {
+  id: string;
+  author: { displayName: string; initials: string };
+  body: CommentSegment[];
+  createdAt: Date;
+}
+
+/** What a Page shows a browser of its Comments. */
+interface CommentsView {
+  /** The Commenter this browser posts as, so it never retypes its display name. */
+  commenter: { displayName: string } | null;
+  /** Newest first. */
+  comments: CommentView[];
+}
+
 type SiteRefusal =
   | { outcome: "site-not-found" }
   | { outcome: "domain-not-allowed" };
 
 export type WidgetResult =
-  | ({ outcome: "loaded"; page: Page } & ReactionsView)
+  | ({ outcome: "loaded"; page: Page } & ReactionsView & CommentsView)
   | SiteRefusal;
 
 export type ReactionResult =
@@ -62,7 +91,23 @@ export type ReactionResult =
   | { outcome: "reaction-option-not-found" }
   | { outcome: "rate-limited" };
 
+export type CommentResult =
+  | {
+      outcome: "posted";
+      /** The browser's token for this Site, newly issued if it had none. */
+      browserToken: string;
+      commenter: { displayName: string };
+      comment: CommentView;
+    }
+  | SiteRefusal
+  | { outcome: "page-not-found" }
+  | { outcome: "invalid-display-name" }
+  | { outcome: "empty-comment" }
+  | { outcome: "comment-too-long" };
+
 const maxPageTitleLength = 500;
+const maxDisplayNameLength = 50;
+const maxCommentLength = 5000;
 
 const hour = 60 * 60 * 1000;
 
@@ -79,9 +124,23 @@ const rateLimitMemory = 23 * hour;
  */
 const reactionLimits = { perBrowser: 50, perFingerprint: 100 };
 
+// Lengths count code points, so an emoji counts once and is never cut in half.
+function lengthOf(text: string): number {
+  return Array.from(text).length;
+}
+
 function shorten(text: string, maxLength: number): string {
-  // By code point, so an emoji is never cut in half.
   return Array.from(text).slice(0, maxLength).join("");
+}
+
+function commentView(comment: Comment): CommentView {
+  const { displayName } = comment.author;
+  return {
+    id: comment.id,
+    author: { displayName, initials: initialsOf(displayName) },
+    body: bodyOf(comment.text),
+    createdAt: comment.createdAt,
+  };
 }
 
 export function createCore({ store, clock, fingerprintSecret }: Ports) {
@@ -162,6 +221,37 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     };
   }
 
+  async function commentsView(
+    page: Page,
+    visitor: Visitor | null,
+  ): Promise<CommentsView> {
+    const commenter = visitor && (await store.findCommenter(visitor.id));
+    return {
+      commenter: commenter && { displayName: commenter.displayName },
+      comments: (await store.listComments(page.id)).map(commentView),
+    };
+  }
+
+  // A browser posts as one Commenter, whose display name is the latest it gave.
+  async function commenterPosting(
+    site: Site,
+    visitor: Visitor,
+    displayName: string,
+  ) {
+    const commenter = await store.findCommenter(visitor.id);
+    if (!commenter) {
+      return store.createCommenter({
+        siteId: site.id,
+        visitorId: visitor.id,
+        displayName,
+      });
+    }
+    if (commenter.displayName !== displayName) {
+      await store.renameCommenter(commenter.id, displayName);
+    }
+    return { ...commenter, displayName };
+  }
+
   return {
     /** What a Widget shows on a Page; an unknown Page Key creates the Page. */
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
@@ -176,10 +266,61 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       });
       const recognized = await recognize(site, request.browserToken);
 
+      const visitor = recognized?.visitor ?? null;
+
       return {
         outcome: "loaded",
         page,
-        ...(await reactionsView(site, page, recognized?.visitor ?? null)),
+        ...(await reactionsView(site, page, visitor)),
+        ...(await commentsView(page, visitor)),
+      };
+    },
+
+    /**
+     * Publishes a Comment in plain text. The browser posts as a Guest
+     * Commenter under the display name, and no email is asked.
+     */
+    async postComment(request: CommentRequest): Promise<CommentResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      const { site } = allowed;
+
+      const page = await store.findPage(site.id, request.pageKey);
+      if (!page) return { outcome: "page-not-found" };
+
+      const displayName = request.displayName
+        .normalize("NFC")
+        .trim()
+        .replace(/\s+/gu, " ");
+      if (!displayName || lengthOf(displayName) > maxDisplayNameLength) {
+        return { outcome: "invalid-display-name" };
+      }
+      const text = request.text
+        .normalize("NFC")
+        .replace(/\r\n?/gu, "\n")
+        .trim();
+      if (!text) return { outcome: "empty-comment" };
+      if (lengthOf(text) > maxCommentLength) {
+        return { outcome: "comment-too-long" };
+      }
+
+      const { visitor, browserToken } =
+        (await recognize(site, request.browserToken)) ??
+        (await issueBrowserToken(site));
+      const author = await commenterPosting(site, visitor, displayName);
+      const createdAt = clock.now();
+      const { id } = await store.createComment({
+        pageId: page.id,
+        commenterId: author.id,
+        text,
+        createdAt,
+      });
+
+      return {
+        outcome: "posted",
+        browserToken,
+        commenter: { displayName },
+        comment: commentView({ id, author, text, createdAt }),
       };
     },
 

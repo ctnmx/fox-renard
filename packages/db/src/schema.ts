@@ -92,6 +92,10 @@ export const visitors = pgTable(
       .references(() => sites.id, { onDelete: "cascade" }),
     /** The SHA-256 of the browser token, which is never stored itself. */
     tokenHash: text("token_hash").notNull(),
+    /** The Commenter this browser posts as, once it has posted. */
+    commenterId: uuid("commenter_id").references(() => commenters.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAt(),
   },
   (table) => [unique().on(table.siteId, table.tokenHash)],
@@ -113,6 +117,33 @@ export const reactions = pgTable(
   },
   // One Reaction per Visitor and Page.
   (table) => [primaryKey({ columns: [table.pageId, table.visitorId] })],
+);
+
+/** A Visitor who posted on a Site under a display name, on that Site only (ADR-0005). */
+export const commenters = pgTable("commenters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  siteId: uuid("site_id")
+    .notNull()
+    .references(() => sites.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  createdAt: createdAt(),
+});
+
+export const comments = pgTable(
+  "comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    pageId: uuid("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    commenterId: uuid("commenter_id")
+      .notNull()
+      .references(() => commenters.id, { onDelete: "cascade" }),
+    /** Plain text, as its Commenter wrote it. */
+    text: text("text").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index().on(table.pageId, table.createdAt)],
 );
 
 /** What abuse limits remember of recent Reactions, for 24 hours at most (ADR-0006). */

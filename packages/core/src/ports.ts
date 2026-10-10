@@ -1,4 +1,11 @@
-import type { Page, Reaction, Site, Visitor } from "./model";
+import type {
+  Comment,
+  Commenter,
+  Page,
+  Reaction,
+  Site,
+  Visitor,
+} from "./model";
 
 /** Storage of domain data. */
 export interface Store {
@@ -23,6 +30,23 @@ export interface Store {
     visitorId: string,
     optionId: string | null,
   ): Promise<void>;
+  /** The Commenter a Visitor's browser posts as, once it has posted. */
+  findCommenter(visitorId: string): Promise<Commenter | null>;
+  /** Creates a Guest Commenter on a Site and links the Visitor's browser to them. */
+  createCommenter(commenter: {
+    siteId: string;
+    visitorId: string;
+    displayName: string;
+  }): Promise<Commenter>;
+  renameCommenter(commenterId: string, displayName: string): Promise<void>;
+  createComment(comment: {
+    pageId: string;
+    commenterId: string;
+    text: string;
+    createdAt: Date;
+  }): Promise<{ id: string }>;
+  /** A Page's Comments, newest first. */
+  listComments(pageId: string): Promise<Comment[]>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;
   /** How many remembered hits a fingerprint and a Visitor each have on a Site. */
