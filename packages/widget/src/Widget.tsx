@@ -1,6 +1,6 @@
 import type { WidgetData } from "@fox-renard/api/client";
 import { useEffect, useState } from "preact/hooks";
-import { Comments } from "./Comments";
+import { Comments, withPosted } from "./Comments";
 import { t } from "./i18n";
 import { ReactionSet } from "./ReactionSet";
 import { fetchWidgetData, type PageConnection } from "./requests";
@@ -29,13 +29,13 @@ export function Widget(page: PageConnection) {
         page={page}
         commenter={data.commenter}
         comments={data.comments}
-        onPosted={({ commenter, comment }) =>
+        onPosted={({ commenter, comment }, topLevelCommentId) =>
           setData(
             (data) =>
               data && {
                 ...data,
                 commenter,
-                comments: [comment, ...data.comments],
+                comments: withPosted(data.comments, comment, topLevelCommentId),
               },
           )
         }

@@ -65,9 +65,10 @@ export class Refused extends Error {
   }
 }
 
+/** Posts a Comment, or a Reply to the Comment `replyTo` names. */
 export async function postComment(
   page: PageConnection,
-  comment: { displayName: string; text: string },
+  comment: { displayName: string; text: string; replyTo?: string },
 ) {
   const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.comments.$post({
