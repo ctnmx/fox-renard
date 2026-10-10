@@ -1,10 +1,17 @@
 import type { WidgetData } from "@fox-renard/api/client";
 import { useState } from "preact/hooks";
-import { locale, t } from "./i18n";
+import { locale, type MessageKey, t } from "./i18n";
 import { relativeDate } from "./relative-date";
-import { postComment, type WidgetPage } from "./requests";
+import { type PageConnection, postComment, Refused } from "./requests";
 
 type Comment = WidgetData["comments"][number];
+
+/** What the Visitor reads when Core refuses their Comment, by error code. */
+const refusals: Record<string, MessageKey> = {
+  invalid_display_name: "invalidDisplayName",
+  empty_comment: "emptyComment",
+  comment_too_long: "commentTooLong",
+};
 
 function Body({ body }: Pick<Comment, "body">) {
   return (
@@ -12,7 +19,7 @@ function Body({ body }: Pick<Comment, "body">) {
       {body.map((segment) =>
         segment.type === "link" ? (
           <a href={segment.url} target="_blank" rel="nofollow ugc noopener">
-            {segment.url}
+            {segment.text}
           </a>
         ) : (
           segment.text
@@ -28,7 +35,7 @@ export function Comments({
   comments,
   onPosted,
 }: Pick<WidgetData, "commenter" | "comments"> & {
-  page: WidgetPage;
+  page: PageConnection;
   onPosted: (
     posted: Pick<WidgetData, "commenter"> & { comment: Comment },
   ) => void;
@@ -37,19 +44,21 @@ export function Comments({
   const [displayName, setDisplayName] = useState(commenter?.displayName ?? "");
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<MessageKey>();
 
   async function post(event: Event) {
     event.preventDefault();
     if (posting) return;
     setPosting(true);
-    setFailed(false);
+    setFailure(undefined);
     try {
       onPosted(await postComment(page, { displayName, text }));
       setText("");
     } catch (error) {
       console.error(error);
-      setFailed(true);
+      setFailure(
+        (error instanceof Refused && refusals[error.code]) || "postFailed",
+      );
     } finally {
       setPosting(false);
     }
@@ -66,7 +75,6 @@ export function Comments({
             name="displayName"
             autocomplete="nickname"
             required
-            maxLength={50}
             value={displayName}
             onInput={(event) => setDisplayName(event.currentTarget.value)}
           />
@@ -77,14 +85,13 @@ export function Comments({
           aria-label={t("commentLabel")}
           placeholder={t("commentPlaceholder")}
           required
-          maxLength={5000}
           rows={3}
           value={text}
           onInput={(event) => setText(event.currentTarget.value)}
         />
-        {failed && (
+        {failure && (
           <p class="form-error" role="alert">
-            {t("postFailed")}
+            {t(failure)}
           </p>
         )}
         <button class="post" type="submit" disabled={posting}>
@@ -96,11 +103,13 @@ export function Comments({
           <li key={comment.id}>
             <article class="comment">
               <span class="avatar" aria-hidden="true">
-                {comment.author.initials}
+                {comment.commenter.initials}
               </span>
               <div class="comment-main">
                 <p class="comment-meta">
-                  <span class="author">{comment.author.displayName}</span>
+                  <span class="display-name">
+                    {comment.commenter.displayName}
+                  </span>
                   <time
                     dateTime={comment.createdAt}
                     title={new Date(comment.createdAt).toLocaleString(locale)}

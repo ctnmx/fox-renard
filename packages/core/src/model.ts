@@ -46,7 +46,7 @@ export interface Commenter {
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {
   id: string;
-  author: Commenter;
+  commenter: Commenter;
   text: string;
   createdAt: Date;
 }

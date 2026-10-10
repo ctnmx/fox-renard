@@ -2,6 +2,7 @@ import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
 import type {
   Comment,
+  Commenter,
   Page,
   Reaction,
   ReactionOption,
@@ -59,7 +60,7 @@ interface ReactionsView {
 /** A Comment as Visitors read it. */
 export interface CommentView {
   id: string;
-  author: { displayName: string; initials: string };
+  commenter: { displayName: string; initials: string };
   body: CommentSegment[];
   createdAt: Date;
 }
@@ -67,7 +68,7 @@ export interface CommentView {
 /** What a Page shows a browser of its Comments. */
 interface CommentsView {
   /** The Commenter this browser posts as, so it never retypes its display name. */
-  commenter: { displayName: string } | null;
+  commenter: Pick<Commenter, "displayName"> | null;
   /** Newest first. */
   comments: CommentView[];
 }
@@ -96,7 +97,7 @@ export type CommentResult =
       outcome: "posted";
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
-      commenter: { displayName: string };
+      commenter: Pick<Commenter, "displayName">;
       comment: CommentView;
     }
   | SiteRefusal
@@ -134,10 +135,10 @@ function shorten(text: string, maxLength: number): string {
 }
 
 function commentView(comment: Comment): CommentView {
-  const { displayName } = comment.author;
+  const { displayName } = comment.commenter;
   return {
     id: comment.id,
-    author: { displayName, initials: initialsOf(displayName) },
+    commenter: { displayName, initials: initialsOf(displayName) },
     body: bodyOf(comment.text),
     createdAt: comment.createdAt,
   };
@@ -233,7 +234,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
   }
 
   // A browser posts as one Commenter, whose display name is the latest it gave.
-  async function commenterPosting(
+  async function commenterFor(
     site: Site,
     visitor: Visitor,
     displayName: string,
@@ -307,11 +308,11 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       const { visitor, browserToken } =
         (await recognize(site, request.browserToken)) ??
         (await issueBrowserToken(site));
-      const author = await commenterPosting(site, visitor, displayName);
+      const commenter = await commenterFor(site, visitor, displayName);
       const createdAt = clock.now();
       const { id } = await store.createComment({
         pageId: page.id,
-        commenterId: author.id,
+        commenterId: commenter.id,
         text,
         createdAt,
       });
@@ -320,7 +321,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         outcome: "posted",
         browserToken,
         commenter: { displayName },
-        comment: commentView({ id, author, text, createdAt }),
+        comment: commentView({ id, commenter, text, createdAt }),
       };
     },
 

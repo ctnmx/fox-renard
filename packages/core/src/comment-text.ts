@@ -1,9 +1,12 @@
-/** One stretch of a Comment as Visitors read it: plain text, or a link. */
+/**
+ * One stretch of a Comment as Visitors read it: plain text, or a link showing
+ * the address as written. Its `text` is never HTML, so it is shown as text.
+ */
 export type CommentSegment =
   | { type: "text"; text: string }
-  | { type: "link"; url: string };
+  | { type: "link"; url: string; text: string };
 
-const urlCandidate = /https?:\/\/[^\s<>"]+/giu;
+const urlCandidate = /(?:https?:\/\/|www\.)[^\s<>"]+/giu;
 const sentencePunctuation = ".,;:!?'\"»…";
 
 function count(text: string, character: string): number {
@@ -25,18 +28,19 @@ function trimUrl(candidate: string): string {
   }
 }
 
-/** A Comment's text as Visitors read it: plain text, with its URLs as links. */
+/** A Comment's text as Visitors read it: plain text, with its web addresses as links. */
 export function bodyOf(text: string): CommentSegment[] {
   const body: CommentSegment[] = [];
   let read = 0;
   for (const match of text.matchAll(urlCandidate)) {
-    const url = trimUrl(match[0]);
-    if (!URL.canParse(url)) continue;
+    const address = trimUrl(match[0]);
+    const url = /^www\./iu.test(address) ? `https://${address}` : address;
+    if (address.length <= "www.".length || !URL.canParse(url)) continue;
     if (match.index > read) {
       body.push({ type: "text", text: text.slice(read, match.index) });
     }
-    body.push({ type: "link", url });
-    read = match.index + url.length;
+    body.push({ type: "link", url, text: address });
+    read = match.index + address.length;
   }
   if (read < text.length) body.push({ type: "text", text: text.slice(read) });
   return body;
@@ -49,5 +53,5 @@ export function initialsOf(displayName: string): string {
     .slice(0, 2)
     .map((word) => Array.from(word)[0] ?? "")
     .join("")
-    .toLocaleUpperCase("fr");
+    .toUpperCase();
 }

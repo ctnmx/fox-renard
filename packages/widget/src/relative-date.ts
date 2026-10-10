@@ -10,8 +10,8 @@ const units = [
 ] as const;
 
 /** How long ago a date was, as "il y a 3 jours", or "à l'instant" within a minute. */
-export function relativeDate(date: Date, now = new Date()): string {
-  const seconds = (now.getTime() - date.getTime()) / 1000;
+export function relativeDate(date: Date): string {
+  const seconds = (Date.now() - date.getTime()) / 1000;
   const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   for (const [unit, size] of units) {
     if (seconds >= size)

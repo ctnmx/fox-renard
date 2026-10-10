@@ -194,7 +194,10 @@ export function createStore(db: Database): Store {
           id: comments.id,
           text: comments.text,
           createdAt: comments.createdAt,
-          author: { id: commenters.id, displayName: commenters.displayName },
+          commenter: {
+            id: commenters.id,
+            displayName: commenters.displayName,
+          },
         })
         .from(comments)
         .innerJoin(commenters, eq(commenters.id, comments.commenterId))

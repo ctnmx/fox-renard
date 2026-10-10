@@ -3,9 +3,9 @@ import { useEffect, useState } from "preact/hooks";
 import { Comments } from "./Comments";
 import { t } from "./i18n";
 import { ReactionSet } from "./ReactionSet";
-import { fetchWidgetData, type WidgetPage } from "./requests";
+import { fetchWidgetData, type PageConnection } from "./requests";
 
-export function Widget(page: WidgetPage) {
+export function Widget(page: PageConnection) {
   const [data, setData] = useState<WidgetData>();
   const { client, siteId, pageKey } = page;
 

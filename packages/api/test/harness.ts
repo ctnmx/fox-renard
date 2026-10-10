@@ -69,6 +69,20 @@ export const veloSheet: WidgetPage = {
   title: "Sortie dans le Vercors",
 };
 
+export type OptionLabel =
+  (typeof rectoVerso.reactionSet.options)[number]["label"];
+
+/** The id of one of Recto Verso's Reaction Options. */
+export function optionId(label: OptionLabel): string {
+  const option = rectoVerso.reactionSet.options.find(
+    (option) => option.label === label,
+  );
+  if (!option) throw new Error(`No Reaction Option labeled ${label}`);
+  return option.id;
+}
+
+const anyClientIp = "198.51.100.20";
+
 /** The header a browser sends once the API has issued it a token. */
 export function authorization(browserToken: string | undefined) {
   return browserToken ? { authorization: `Bearer ${browserToken}` } : {};
@@ -138,9 +152,127 @@ export async function startTestApi() {
     return response.json();
   }
 
+  function putReaction({
+    page = routeSheet,
+    origin = page.origin,
+    clientIp = anyClientIp,
+    browserToken,
+    optionId,
+  }: {
+    page?: WidgetPage;
+    origin?: string;
+    clientIp?: string;
+    browserToken?: string;
+    optionId: string | null;
+  }) {
+    return client.v1.sites[":siteId"].pages[":pageKey"].reaction.$put(
+      {
+        param: { siteId: page.siteId, pageKey: page.pageKey },
+        header: authorization(browserToken),
+        json: { optionId },
+      },
+      { headers: { Origin: origin, [clientIpHeader]: clientIp } },
+    );
+  }
+
+  function postComment({
+    page = routeSheet,
+    origin = page.origin,
+    browserToken,
+    displayName,
+    text,
+  }: {
+    page?: WidgetPage;
+    origin?: string;
+    browserToken?: string;
+    displayName: string;
+    text: string;
+  }) {
+    return client.v1.sites[":siteId"].pages[":pageKey"].comments.$post(
+      {
+        param: { siteId: page.siteId, pageKey: page.pageKey },
+        header: authorization(browserToken),
+        json: { displayName, text },
+      },
+      { headers: { Origin: origin } },
+    );
+  }
+
+  /**
+   * A Visitor's browser. Like the Widget, it keeps the token the API issues
+   * it for each Site and sends it back to that Site.
+   */
+  function newBrowser({ clientIp = anyClientIp } = {}) {
+    const browserTokens = new Map<string, string>();
+
+    async function tryReact(
+      label: OptionLabel | null,
+      { page = routeSheet } = {},
+    ) {
+      const response = await putReaction({
+        page,
+        clientIp,
+        browserToken: browserTokens.get(page.siteId),
+        optionId: label === null ? null : optionId(label),
+      });
+      if (response.status !== 200) return { status: response.status };
+      const reacted = await response.json();
+      browserTokens.set(page.siteId, reacted.browserToken);
+      return { status: response.status, reacted };
+    }
+
+    return {
+      /** The browser's token for Recto Verso. */
+      get browserToken() {
+        return browserTokens.get(rectoVerso.siteId);
+      },
+
+      tryReact,
+
+      async react(label: OptionLabel | null) {
+        const { status, reacted } = await tryReact(label);
+        if (!reacted) {
+          throw new Error(`Expected the Reaction to count, got ${status}`);
+        }
+        return reacted;
+      },
+
+      async post(
+        displayName: string,
+        text: string,
+        { page = routeSheet } = {},
+      ) {
+        const response = await postComment({
+          page,
+          browserToken: browserTokens.get(page.siteId),
+          displayName,
+          text,
+        });
+        if (response.status !== 201) {
+          throw new Error(
+            `Expected the Comment to post, got ${response.status}`,
+          );
+        }
+        const posted = await response.json();
+        browserTokens.set(page.siteId, posted.browserToken);
+        return posted;
+      },
+
+      loadWidget({ page = routeSheet } = {}) {
+        return loadWidget({
+          page,
+          browserToken: browserTokens.get(page.siteId),
+        });
+      },
+    };
+  }
+
   return {
     client,
     loadWidget,
+    putReaction,
+    postComment,
+    newBrowser,
     clock,
     outbox,
     photos,

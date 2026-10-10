@@ -10,6 +10,9 @@ const fr = {
   postFailed:
     "Ton commentaire n'a pas pu être publié. Réessaie dans un instant.",
   justNow: "à l'instant",
+  invalidDisplayName: "Ton nom est vide ou trop long.",
+  emptyComment: "Ton commentaire est vide.",
+  commentTooLong: "Ton commentaire est trop long.",
 };
 
 /** The language of the strings above, for dates and numbers. */

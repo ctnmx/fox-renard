@@ -213,4 +213,22 @@ test.describe("Comments on a route sheet", () => {
     await expect(widget.getByRole("article")).toHaveCount(1);
     expect(thirdPartyRequests).toEqual([]);
   });
+
+  test("a Comment over the length limit is refused with a message", async ({
+    page,
+  }) => {
+    await page.goto(`/article/essai-${randomUUID()}`);
+    const widget = await scrollToWidget(page);
+
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("é".repeat(5001));
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    await expect(widget.getByRole("alert")).toHaveText(
+      "Ton commentaire est trop long.",
+    );
+    await expect(widget.getByRole("article")).toHaveCount(0);
+  });
 });

@@ -1,6 +1,6 @@
 import type { WidgetData } from "@fox-renard/api/client";
 import { useRef } from "preact/hooks";
-import { putReaction, type WidgetPage } from "./requests";
+import { type PageConnection, putReaction } from "./requests";
 
 type Reactions = Pick<WidgetData, "reactionSet" | "reaction">;
 
@@ -10,7 +10,7 @@ export function ReactionSet({
   reaction,
   onReacted,
 }: Reactions & {
-  page: WidgetPage;
+  page: PageConnection;
   onReacted: (reactions: Reactions) => void;
 }) {
   // One request at a time, so a double tap cannot issue two browser tokens.

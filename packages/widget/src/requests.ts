@@ -2,7 +2,7 @@ import type { Client, WidgetData } from "@fox-renard/api/client";
 import { keepBrowserToken, readBrowserToken } from "./browser-token";
 
 /** The Page a Widget sits on, and the client that reaches its Site's API. */
-export interface WidgetPage {
+export interface PageConnection {
   client: Client;
   siteId: string;
   pageKey: string;
@@ -14,7 +14,8 @@ function authorization(siteId: string) {
   return browserToken ? { authorization: `Bearer ${browserToken}` } : {};
 }
 
-function pageOf({ client, siteId, pageKey }: WidgetPage) {
+/** What every request about the Page sends. */
+function pageRequest({ client, siteId, pageKey }: PageConnection) {
   return {
     endpoints: client.v1.sites[":siteId"].pages[":pageKey"],
     param: { siteId, pageKey },
@@ -22,8 +23,10 @@ function pageOf({ client, siteId, pageKey }: WidgetPage) {
   };
 }
 
-export async function fetchWidgetData(page: WidgetPage): Promise<WidgetData> {
-  const { endpoints, param, header } = pageOf(page);
+export async function fetchWidgetData(
+  page: PageConnection,
+): Promise<WidgetData> {
+  const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.widget.$get({
     param,
     // The address without query or fragment, so tracking parameters never stick.
@@ -37,8 +40,11 @@ export async function fetchWidgetData(page: WidgetPage): Promise<WidgetData> {
 }
 
 /** Sets the browser's Reaction on the Page, or removes it with `null`. */
-export async function putReaction(page: WidgetPage, optionId: string | null) {
-  const { endpoints, param, header } = pageOf(page);
+export async function putReaction(
+  page: PageConnection,
+  optionId: string | null,
+) {
+  const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.reaction.$put({
     param,
     header,
@@ -52,20 +58,25 @@ export async function putReaction(page: WidgetPage, optionId: string | null) {
   return reacted;
 }
 
+/** The API refused a request, for the reason its error code gives. */
+export class Refused extends Error {
+  constructor(readonly code: string) {
+    super(`Fox Renard: the API refused the request: ${code}.`);
+  }
+}
+
 export async function postComment(
-  page: WidgetPage,
+  page: PageConnection,
   comment: { displayName: string; text: string },
 ) {
-  const { endpoints, param, header } = pageOf(page);
+  const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.comments.$post({
     param,
     header,
     json: comment,
   });
   if (response.status !== 201) {
-    throw new Error(
-      `Fox Renard: posting a Comment answered ${response.status}.`,
-    );
+    throw new Refused((await response.json()).error);
   }
   const posted = await response.json();
   keepBrowserToken(page.siteId, posted.browserToken);
