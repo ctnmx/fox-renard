@@ -234,7 +234,7 @@ test.describe("Comments on a route sheet", () => {
 });
 
 test.describe("Replies on a route sheet", () => {
-  test("a Visitor replies to a Comment, its author replies to that Reply, and both Replies sit under the Comment", async ({
+  test("a Guest replies to a Comment, its Commenter replies to that Reply, and both Replies sit under the Comment", async ({
     page,
     browser,
   }) => {

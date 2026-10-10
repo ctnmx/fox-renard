@@ -106,6 +106,8 @@ export type CommentResult =
       browserToken: string;
       commenter: Pick<Commenter, "displayName">;
       comment: CommentView;
+      /** The top-level Comment a posted Reply sits under, or `null` for a top-level Comment. */
+      topLevelCommentId: string | null;
     }
   | SiteRefusal
   | { outcome: "page-not-found" }
@@ -346,23 +348,24 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         .replace(/\r\n?/gu, "\n")
         .trim();
       if (!text) return { outcome: "empty-comment" };
-      if (lengthOf(text) > maxCommentLength) {
-        return { outcome: "comment-too-long" };
-      }
 
       let answered: Comment | null = null;
       if (request.replyTo !== null) {
         answered = await store.findComment(page.id, request.replyTo);
         if (!answered) return { outcome: "comment-not-found" };
       }
+      const placed = answered
+        ? placeReply(answered, text)
+        : { topLevelCommentId: null, text };
+      // The limit holds for every Comment as stored, @mention included.
+      if (lengthOf(placed.text) > maxCommentLength) {
+        return { outcome: "comment-too-long" };
+      }
 
       const { visitor, browserToken } =
         (await recognize(site, request.browserToken)) ??
         (await issueBrowserToken(site));
       const commenter = await commenterFor(site, visitor, displayName);
-      const placed = answered
-        ? placeReply(answered, text)
-        : { topLevelCommentId: null, text };
       const createdAt = clock.now();
       const { id } = await store.createComment({
         pageId: page.id,
@@ -376,6 +379,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         browserToken,
         commenter: { displayName },
         comment: commentView({ id, commenter, ...placed, createdAt }),
+        topLevelCommentId: placed.topLevelCommentId,
       };
     },
 

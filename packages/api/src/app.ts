@@ -151,9 +151,14 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           replyTo: replyTo ?? null,
         });
         if (result.outcome !== "posted") return refuse(c, result.outcome);
-        const { commenter, comment } = result;
+        const { commenter, comment, topLevelCommentId } = result;
         return c.json(
-          { browserToken: result.browserToken, commenter, comment },
+          {
+            browserToken: result.browserToken,
+            commenter,
+            comment,
+            topLevelCommentId,
+          },
           201,
         );
       },

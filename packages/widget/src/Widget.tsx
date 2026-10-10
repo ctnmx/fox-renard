@@ -29,13 +29,13 @@ export function Widget(page: PageConnection) {
         page={page}
         commenter={data.commenter}
         comments={data.comments}
-        onPosted={({ commenter, comment }, topLevelCommentId) =>
+        onPosted={(posted) =>
           setData(
             (data) =>
               data && {
                 ...data,
-                commenter,
-                comments: withPosted(data.comments, comment, topLevelCommentId),
+                commenter: posted.commenter,
+                comments: withPosted(data.comments, posted),
               },
           )
         }

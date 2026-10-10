@@ -6,7 +6,7 @@ import { type PageConnection, postComment, Refused } from "./requests";
 
 type TopLevelComment = WidgetData["comments"][number];
 type Comment = TopLevelComment["replies"][number];
-type Posted = Pick<WidgetData, "commenter"> & { comment: Comment };
+type Posted = Awaited<ReturnType<typeof postComment>>;
 
 /** What the Visitor reads when Core refuses their Comment, by error code. */
 const refusals: Record<string, MessageKey> = {
@@ -21,8 +21,7 @@ const refusals: Record<string, MessageKey> = {
  */
 export function withPosted(
   comments: TopLevelComment[],
-  comment: Comment,
-  topLevelCommentId: string | null,
+  { comment, topLevelCommentId }: Posted,
 ): TopLevelComment[] {
   if (topLevelCommentId === null) {
     return [{ ...comment, replies: [] }, ...comments];
@@ -192,7 +191,7 @@ function CommentForm({
   );
 }
 
-/** The Comment a Visitor is replying to, and where their Reply will sit. */
+/** The Comment a Visitor is replying to, and the top-level Comment their Reply form opens under. */
 interface Answering {
   comment: Comment;
   topLevelCommentId: string;
@@ -207,7 +206,7 @@ export function Comments({
   onPosted,
 }: Pick<WidgetData, "commenter" | "comments"> & {
   page: PageConnection;
-  onPosted: (posted: Posted, topLevelCommentId: string | null) => void;
+  onPosted: (posted: Posted) => void;
 }) {
   // The browser's Commenter fills in the display name, so it is typed once.
   const [displayName, setDisplayName] = useState(commenter?.displayName ?? "");
@@ -225,15 +224,19 @@ export function Comments({
         page={page}
         displayName={displayName}
         onDisplayName={setDisplayName}
-        onPosted={(posted) => onPosted(posted, null)}
+        onPosted={onPosted}
       />
       <ol class="comment-list">
         {comments.map((topLevel) => {
-          const replyTo = (comment: Comment) => (opener: HTMLButtonElement) =>
-            setAnswering({ comment, topLevelCommentId: topLevel.id, opener });
+          const openReplyTo =
+            (comment: Comment) => (opener: HTMLButtonElement) =>
+              setAnswering({ comment, topLevelCommentId: topLevel.id, opener });
           return (
             <li key={topLevel.id}>
-              <CommentArticle comment={topLevel} onReply={replyTo(topLevel)} />
+              <CommentArticle
+                comment={topLevel}
+                onReply={openReplyTo(topLevel)}
+              />
               {topLevel.replies.length > 0 && (
                 <ol
                   class="replies"
@@ -245,7 +248,7 @@ export function Comments({
                     <li key={reply.id}>
                       <CommentArticle
                         comment={reply}
-                        onReply={replyTo(reply)}
+                        onReply={openReplyTo(reply)}
                       />
                     </li>
                   ))}
@@ -259,7 +262,7 @@ export function Comments({
                   onDisplayName={setDisplayName}
                   answering={answering.comment}
                   onPosted={(posted) => {
-                    onPosted(posted, topLevel.id);
+                    onPosted(posted);
                     stopAnswering();
                   }}
                   onCancel={stopAnswering}

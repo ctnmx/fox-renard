@@ -41,6 +41,7 @@ describe("a Commenter Replies to a Comment", () => {
       createdAt: api.clock.now().toISOString(),
     };
     expect(reply.comment).toEqual(listedReply);
+    expect(reply.topLevelCommentId).toBe(comment.id);
     expect((await api.loadWidget()).comments).toEqual([
       { ...comment, replies: [listedReply] },
     ]);
@@ -58,10 +59,13 @@ describe("a Commenter Replies to a Comment", () => {
       });
     api.clock.advance(60_000);
 
-    await marie.post("Marie Dupont", "Oui, avec des câbles.", {
-      replyTo: paulsReply.comment.id,
-    });
+    const mariesReply = await marie.post(
+      "Marie Dupont",
+      "Oui, avec des câbles.",
+      { replyTo: paulsReply.comment.id },
+    );
 
+    expect(mariesReply.topLevelCommentId).toBe(comment.id);
     const [topLevel, ...others] = (await api.loadWidget()).comments;
     expect(others).toEqual([]);
     expect(
@@ -125,7 +129,7 @@ describe("a Reply is refused and publishes nothing", () => {
       404,
     ],
     ["to something that is not a Comment id", () => "1", 400],
-  ])("%s", async (_, answered, status) => {
+  ])("%s", async (_, answeredCommentId, status) => {
     await api.loadWidget();
     const marie = api.newBrowser();
     await marie.post("Marie", "Superbe boucle.");
@@ -134,7 +138,7 @@ describe("a Reply is refused and publishes nothing", () => {
       browserToken: marie.browserToken,
       displayName: "Marie D.",
       text: "Merci !",
-      replyTo: await answered(),
+      replyTo: await answeredCommentId(),
     });
 
     expect(response.status).toBe(status);
@@ -146,5 +150,23 @@ describe("a Reply is refused and publishes nothing", () => {
     ).toEqual([
       { commenter: { displayName: "Marie", initials: "M" }, replies: [] },
     ]);
+  });
+
+  test("a Reply to a Reply whose @mention takes it over 5,000 characters", async () => {
+    await api.loadWidget();
+    const { comment } = await api.newBrowser().post("Marie", "Superbe.");
+    const { comment: reply } = await api
+      .newBrowser()
+      .post("Paul", "Équipé ?", { replyTo: comment.id });
+
+    const response = await api.postComment({
+      displayName: "Jeanne",
+      text: "é".repeat(5000 - "@Paul ".length + 1),
+      replyTo: reply.id,
+    });
+
+    expect(response.status).toBe(422);
+    const [topLevel] = (await api.loadWidget()).comments;
+    expect(topLevel?.replies).toHaveLength(1);
   });
 });
