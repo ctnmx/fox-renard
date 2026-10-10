@@ -35,7 +35,7 @@ async function pageOf(response: Awaited<ReturnType<typeof requestWidget>>) {
 }
 
 describe("Widget data for a Page", () => {
-  test("an unknown Page Key from an Allowed Domain creates the Page and returns the Reaction Set with zero counts and no Reaction", async () => {
+  test("an unknown Page Key from an Allowed Domain creates the Page and returns the Reaction Set with zero counts, no Reaction and no Comments", async () => {
     const response = await requestWidget();
 
     expect(response.status).toBe(200);
@@ -70,6 +70,8 @@ describe("Widget data for a Page", () => {
         ],
       },
       reaction: null,
+      commenter: null,
+      comments: [],
     });
   });
 

@@ -1,7 +1,14 @@
 import type { Page, Store } from "@fox-renard/core";
-import { and, count, eq, lte, or, type SQL, sql } from "drizzle-orm";
+import { and, count, desc, eq, lte, or, type SQL, sql } from "drizzle-orm";
 import type { Database } from "./database";
-import { pages, rateLimitHits, reactions, visitors } from "./schema";
+import {
+  commenters,
+  comments,
+  pages,
+  rateLimitHits,
+  reactions,
+  visitors,
+} from "./schema";
 
 export function createStore(db: Database): Store {
   const pageColumns = {
@@ -17,6 +24,23 @@ export function createStore(db: Database): Store {
       .from(pages)
       .where(and(eq(pages.siteId, siteId), eq(pages.key, key)));
     return page;
+  }
+
+  function selectComments() {
+    return db
+      .select({
+        id: comments.id,
+        commenter: {
+          id: commenters.id,
+          displayName: commenters.displayName,
+        },
+        topLevelCommentId: comments.topLevelCommentId,
+        text: comments.text,
+        createdAt: comments.createdAt,
+      })
+      .from(comments)
+      .innerJoin(commenters, eq(commenters.id, comments.commenterId))
+      .$dynamic();
   }
 
   async function insertPage(siteId: string, page: Omit<Page, "id">) {
@@ -136,6 +160,62 @@ export function createStore(db: Database): Store {
           target: [reactions.pageId, reactions.visitorId],
           set: { optionId },
         });
+    },
+
+    async findCommenter(visitorId) {
+      const [commenter] = await db
+        .select({ id: commenters.id, displayName: commenters.displayName })
+        .from(visitors)
+        .innerJoin(commenters, eq(commenters.id, visitors.commenterId))
+        .where(eq(visitors.id, visitorId));
+      return commenter ?? null;
+    },
+
+    async createCommenter({ siteId, visitorId, displayName }) {
+      return db.transaction(async (tx) => {
+        const [commenter] = await tx
+          .insert(commenters)
+          .values({ siteId, displayName })
+          .returning({
+            id: commenters.id,
+            displayName: commenters.displayName,
+          });
+        if (!commenter) throw new Error("The Commenter could not be created");
+        await tx
+          .update(visitors)
+          .set({ commenterId: commenter.id })
+          .where(eq(visitors.id, visitorId));
+        return commenter;
+      });
+    },
+
+    async renameCommenter(commenterId, displayName) {
+      await db
+        .update(commenters)
+        .set({ displayName })
+        .where(eq(commenters.id, commenterId));
+    },
+
+    async createComment(comment) {
+      const [created] = await db
+        .insert(comments)
+        .values(comment)
+        .returning({ id: comments.id });
+      if (!created) throw new Error("The Comment could not be created");
+      return created;
+    },
+
+    async findComment(pageId, commentId) {
+      const [comment] = await selectComments().where(
+        and(eq(comments.pageId, pageId), eq(comments.id, commentId)),
+      );
+      return comment ?? null;
+    },
+
+    async listComments(pageId) {
+      return selectComments()
+        .where(eq(comments.pageId, pageId))
+        .orderBy(desc(comments.createdAt), desc(comments.id));
     },
 
     async recordRateLimitHit(hit) {

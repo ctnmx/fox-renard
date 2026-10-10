@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import {
   anotherSite,
-  clientIpHeader,
-  rectoVerso,
+  optionId,
+  routeSheet,
   startTestApi,
   type TestApi,
+  veloSheet,
 } from "./harness";
 
 let api: TestApi;
@@ -12,33 +13,6 @@ let api: TestApi;
 beforeEach(async () => {
   api = await startTestApi();
 });
-
-type OptionLabel = (typeof rectoVerso.reactionSet.options)[number]["label"];
-
-/** A Page as the Widget embedded on it reports it. */
-interface WidgetPage {
-  siteId: string;
-  origin: string;
-  pageKey: string;
-  url: string;
-  title: string;
-}
-
-const routeSheet: WidgetPage = {
-  siteId: rectoVerso.siteId,
-  origin: "https://www.rectoverso.co",
-  pageKey: "article-tour-du-mont-aiguille",
-  url: "https://www.rectoverso.co/article/tour-du-mont-aiguille",
-  title: "Tour du Mont Aiguille",
-};
-
-function optionId(label: OptionLabel): string {
-  const option = rectoVerso.reactionSet.options.find(
-    (option) => option.label === label,
-  );
-  if (!option) throw new Error(`No Reaction Option labeled ${label}`);
-  return option.id;
-}
 
 /** What a Visitor sees: each Reaction Option's count, by label. */
 function countsIn(data: {
@@ -49,103 +23,11 @@ function countsIn(data: {
   );
 }
 
-function authorization(browserToken: string | undefined) {
-  return browserToken ? { authorization: `Bearer ${browserToken}` } : {};
-}
-
-/** Loads the Widget on a Page, which creates the Page on first sight. */
-async function loadWidget({
-  page = routeSheet,
-  browserToken,
-}: {
-  page?: WidgetPage;
-  browserToken?: string;
-} = {}) {
-  const response = await api.client.v1.sites[":siteId"].pages[
-    ":pageKey"
-  ].widget.$get(
-    {
-      param: { siteId: page.siteId, pageKey: page.pageKey },
-      query: { url: page.url, title: page.title },
-      header: authorization(browserToken),
-    },
-    { headers: { Origin: page.origin } },
-  );
-  if (response.status !== 200) {
-    throw new Error(`Expected the Widget data, got ${response.status}`);
-  }
-  return response.json();
-}
-
-const anyClientIp = "198.51.100.20";
-
-function putReaction({
-  page = routeSheet,
-  origin = page.origin,
-  clientIp = anyClientIp,
-  browserToken,
-  optionId,
-}: {
-  page?: WidgetPage;
-  origin?: string;
-  clientIp?: string;
-  browserToken?: string;
-  optionId: string | null;
-}) {
-  return api.client.v1.sites[":siteId"].pages[":pageKey"].reaction.$put(
-    {
-      param: { siteId: page.siteId, pageKey: page.pageKey },
-      header: authorization(browserToken),
-      json: { optionId },
-    },
-    { headers: { Origin: origin, [clientIpHeader]: clientIp } },
-  );
-}
-
-/**
- * A Visitor's browser on the route sheet. Like the Widget, it keeps the
- * browser token the API hands it and sends it back with every request.
- */
-function newBrowser({ clientIp = anyClientIp } = {}) {
-  let browserToken: string | undefined;
-
-  async function tryReact(label: OptionLabel | null) {
-    const response = await putReaction({
-      clientIp,
-      browserToken,
-      optionId: label === null ? null : optionId(label),
-    });
-    if (response.status !== 200) return { status: response.status };
-    const reacted = await response.json();
-    browserToken = reacted.browserToken;
-    return { status: response.status, reacted };
-  }
-
-  return {
-    get browserToken() {
-      return browserToken;
-    },
-
-    tryReact,
-
-    async react(label: OptionLabel | null) {
-      const { status, reacted } = await tryReact(label);
-      if (!reacted)
-        throw new Error(`Expected the Reaction to count, got ${status}`);
-      return reacted;
-    },
-
-    loadWidget() {
-      return loadWidget({ browserToken });
-    },
-  };
-}
-
 describe("a Visitor reacts", () => {
   test("reacting raises that option's count by one", async () => {
-    await loadWidget();
+    await api.loadWidget();
 
-    const reacted = await newBrowser().react("Je l'ai fait !");
+    const reacted = await api.newBrowser().react("Je l'ai fait !");
 
     const expected = {
       "Je m'inspire": 0,
@@ -153,25 +35,25 @@ describe("a Visitor reacts", () => {
       "Je l'ai fait !": 1,
     };
     expect(countsIn(reacted)).toEqual(expected);
-    expect(countsIn(await loadWidget())).toEqual(expected);
+    expect(countsIn(await api.loadWidget())).toEqual(expected);
   });
 
   test("the Widget data tells each browser which Reaction Option it holds", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     await anna.react("Je le prépare");
 
     expect((await anna.loadWidget()).reaction).toEqual({
       optionId: optionId("Je le prépare"),
     });
-    expect((await newBrowser().loadWidget()).reaction).toBeNull();
+    expect((await api.newBrowser().loadWidget()).reaction).toBeNull();
   });
 
   test("changing the Reaction lowers the old option by one and raises the new one by one", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     await anna.react("Je le prépare");
-    await newBrowser().react("Je le prépare");
+    await api.newBrowser().react("Je le prépare");
 
     const changed = await anna.react("Je l'ai fait !");
 
@@ -182,14 +64,14 @@ describe("a Visitor reacts", () => {
     };
     expect(countsIn(changed)).toEqual(expected);
     expect(changed.reaction).toEqual({ optionId: optionId("Je l'ai fait !") });
-    expect(countsIn(await loadWidget())).toEqual(expected);
+    expect(countsIn(await api.loadWidget())).toEqual(expected);
   });
 
   test("removing the Reaction lowers its option's count by one", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     await anna.react("Je m'inspire");
-    await newBrowser().react("Je m'inspire");
+    await api.newBrowser().react("Je m'inspire");
 
     const removed = await anna.react(null);
 
@@ -199,8 +81,8 @@ describe("a Visitor reacts", () => {
   });
 
   test("the same browser never counts twice on one Page", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     await anna.react("Je m'inspire");
     const firstToken = anna.browserToken;
 
@@ -212,7 +94,7 @@ describe("a Visitor reacts", () => {
     ]);
 
     expect(anna.browserToken).toBe(firstToken);
-    const counts = countsIn(await loadWidget());
+    const counts = countsIn(await api.loadWidget());
     expect(Object.values(counts).reduce((sum, count) => sum + count)).toBe(1);
   });
 });
@@ -236,15 +118,15 @@ describe("a Reaction is refused and changes nothing", () => {
     ],
     ["for an option id that is not one", { optionId: "💡" }, 400],
   ])("%s", async (_, request, status) => {
-    await loadWidget();
+    await api.loadWidget();
 
-    const response = await putReaction({
+    const response = await api.putReaction({
       optionId: optionId("Je m'inspire"),
       ...request,
     });
 
     expect(response.status).toBe(status);
-    expect(countsIn(await loadWidget())).toEqual({
+    expect(countsIn(await api.loadWidget())).toEqual({
       "Je m'inspire": 0,
       "Je le prépare": 0,
       "Je l'ai fait !": 0,
@@ -254,19 +136,12 @@ describe("a Reaction is refused and changes nothing", () => {
 
 describe("a browser token", () => {
   test("issued for one Site is not recognized on another Site", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     await anna.react("Je l'ai fait !");
 
-    const veloSheet: WidgetPage = {
-      siteId: anotherSite.siteId,
-      origin: "https://velo.example",
-      pageKey: "sortie-vercors",
-      url: "https://velo.example/sortie-vercors",
-      title: "Sortie dans le Vercors",
-    };
-    await loadWidget({ page: veloSheet });
-    const response = await putReaction({
+    await api.loadWidget({ page: veloSheet });
+    const response = await api.putReaction({
       page: veloSheet,
       browserToken: anna.browserToken,
       optionId: anotherSite.reactionSet.options[0].id,
@@ -285,19 +160,19 @@ describe("abuse limits on reacting", () => {
   /** Reacts from `count` new browsers on one client IP. */
   async function reactFromNewBrowsers(count: number, clientIp: string) {
     for (let i = 0; i < count; i++) {
-      await newBrowser({ clientIp }).react("Je l'ai fait !");
+      await api.newBrowser({ clientIp }).react("Je l'ai fait !");
     }
   }
 
   test("a browser can react 50 times, then is refused", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     for (let i = 0; i < 50; i++) {
       await anna.react(i % 2 === 0 ? "Je le prépare" : "Je m'inspire");
     }
 
     expect((await anna.tryReact("Je l'ai fait !")).status).toBe(429);
-    expect(countsIn(await loadWidget())).toEqual({
+    expect(countsIn(await api.loadWidget())).toEqual({
       "Je m'inspire": 1,
       "Je le prépare": 0,
       "Je l'ai fait !": 0,
@@ -316,26 +191,26 @@ describe("abuse limits on reacting", () => {
   ])(
     "%s can react 100 times a day, whichever browsers it uses",
     async (_, clientIp, sameNetwork, otherNetwork) => {
-      await loadWidget();
+      await api.loadWidget();
       await reactFromNewBrowsers(100, clientIp);
 
-      const refused = await newBrowser({ clientIp: sameNetwork }).tryReact(
-        "Je l'ai fait !",
-      );
+      const refused = await api
+        .newBrowser({ clientIp: sameNetwork })
+        .tryReact("Je l'ai fait !");
       expect(refused.status).toBe(429);
-      expect(countsIn(await loadWidget())).toMatchObject({
+      expect(countsIn(await api.loadWidget())).toMatchObject({
         "Je l'ai fait !": 100,
       });
 
-      const elsewhere = await newBrowser({ clientIp: otherNetwork }).tryReact(
-        "Je l'ai fait !",
-      );
+      const elsewhere = await api
+        .newBrowser({ clientIp: otherNetwork })
+        .tryReact("Je l'ai fait !");
       expect(elsewhere.status).toBe(200);
     },
   );
 
   test("a network's fingerprint rotates daily, so its limit starts over at midnight UTC", async () => {
-    await loadWidget();
+    await api.loadWidget();
     const clientIp = "203.0.113.7";
     await reactFromNewBrowsers(100, clientIp);
 
@@ -347,18 +222,18 @@ describe("abuse limits on reacting", () => {
     );
     api.clock.advance(midnight - now.getTime() - 1);
     expect(
-      (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
+      (await api.newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
     ).toBe(429);
 
     api.clock.advance(1);
     expect(
-      (await newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
+      (await api.newBrowser({ clientIp }).tryReact("Je m'inspire")).status,
     ).toBe(200);
   });
 
   test("what abuse limits remember, fingerprints included, is erased within 24 hours", async () => {
-    await loadWidget();
-    const anna = newBrowser();
+    await api.loadWidget();
+    const anna = api.newBrowser();
     for (let i = 0; i < 50; i++) await anna.react("Je m'inspire");
 
     // Each hit keeps a fingerprint with its browser, so the browser's limit

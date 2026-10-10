@@ -1,5 +1,14 @@
+import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
-import type { Page, Reaction, ReactionOption, Site, Visitor } from "./model";
+import type {
+  Comment,
+  Commenter,
+  Page,
+  Reaction,
+  ReactionOption,
+  Site,
+  Visitor,
+} from "./model";
 import { networkOf } from "./network";
 import type { Ports } from "./ports";
 
@@ -29,6 +38,13 @@ export interface ReactionRequest extends PageRequest {
   optionId: string | null;
 }
 
+export interface CommentRequest extends PageRequest {
+  displayName: string;
+  text: string;
+  /** The Comment this one Replies to, or `null` for a top-level Comment. */
+  replyTo: string | null;
+}
+
 export type CountedReactionOption = ReactionOption & { count: number };
 
 export interface CountedReactionSet {
@@ -43,12 +59,33 @@ interface ReactionsView {
   reaction: Reaction | null;
 }
 
+/** A Comment as Visitors read it. */
+export interface CommentView {
+  id: string;
+  commenter: { displayName: string; initials: string };
+  body: CommentSegment[];
+  createdAt: Date;
+}
+
+/** A top-level Comment as Visitors read it, with its Replies oldest first. */
+export interface TopLevelCommentView extends CommentView {
+  replies: CommentView[];
+}
+
+/** What a Page shows a browser of its Comments. */
+interface CommentsView {
+  /** The Commenter this browser posts as, so it never retypes its display name. */
+  commenter: Pick<Commenter, "displayName"> | null;
+  /** Newest first. */
+  comments: TopLevelCommentView[];
+}
+
 type SiteRefusal =
   | { outcome: "site-not-found" }
   | { outcome: "domain-not-allowed" };
 
 export type WidgetResult =
-  | ({ outcome: "loaded"; page: Page } & ReactionsView)
+  | ({ outcome: "loaded"; page: Page } & ReactionsView & CommentsView)
   | SiteRefusal;
 
 export type ReactionResult =
@@ -62,7 +99,26 @@ export type ReactionResult =
   | { outcome: "reaction-option-not-found" }
   | { outcome: "rate-limited" };
 
+export type CommentResult =
+  | {
+      outcome: "posted";
+      /** The browser's token for this Site, newly issued if it had none. */
+      browserToken: string;
+      commenter: Pick<Commenter, "displayName">;
+      comment: CommentView;
+      /** The top-level Comment a posted Reply sits under, or `null` for a top-level Comment. */
+      topLevelCommentId: string | null;
+    }
+  | SiteRefusal
+  | { outcome: "page-not-found" }
+  | { outcome: "comment-not-found" }
+  | { outcome: "invalid-display-name" }
+  | { outcome: "empty-comment" }
+  | { outcome: "comment-too-long" };
+
 const maxPageTitleLength = 500;
+const maxDisplayNameLength = 50;
+const maxCommentLength = 5000;
 
 const hour = 60 * 60 * 1000;
 
@@ -79,9 +135,60 @@ const rateLimitMemory = 23 * hour;
  */
 const reactionLimits = { perBrowser: 50, perFingerprint: 100 };
 
+// Lengths count code points, so an emoji counts once and is never cut in half.
+function lengthOf(text: string): number {
+  return Array.from(text).length;
+}
+
 function shorten(text: string, maxLength: number): string {
-  // By code point, so an emoji is never cut in half.
   return Array.from(text).slice(0, maxLength).join("");
+}
+
+/** Each top-level Comment with its Replies, from a Page's Comments newest first. */
+function topLevelCommentViews(comments: Comment[]): TopLevelCommentView[] {
+  const replies = new Map<string, CommentView[]>();
+  for (const comment of comments.toReversed()) {
+    const { topLevelCommentId } = comment;
+    if (topLevelCommentId === null) continue;
+    replies.set(topLevelCommentId, [
+      ...(replies.get(topLevelCommentId) ?? []),
+      commentView(comment),
+    ]);
+  }
+  return comments
+    .filter((comment) => comment.topLevelCommentId === null)
+    .map((comment) => ({
+      ...commentView(comment),
+      replies: replies.get(comment.id) ?? [],
+    }));
+}
+
+/**
+ * Where a Reply sits and what it says. Replies stay one level deep: a Reply
+ * to a Reply sits under the same top-level Comment, and starts by naming
+ * whom it answers.
+ */
+function placeReply(
+  answered: Comment,
+  text: string,
+): Pick<Comment, "topLevelCommentId" | "text"> {
+  if (answered.topLevelCommentId === null) {
+    return { topLevelCommentId: answered.id, text };
+  }
+  return {
+    topLevelCommentId: answered.topLevelCommentId,
+    text: `@${answered.commenter.displayName} ${text}`,
+  };
+}
+
+function commentView(comment: Comment): CommentView {
+  const { displayName } = comment.commenter;
+  return {
+    id: comment.id,
+    commenter: { displayName, initials: initialsOf(displayName) },
+    body: bodyOf(comment.text),
+    createdAt: comment.createdAt,
+  };
 }
 
 export function createCore({ store, clock, fingerprintSecret }: Ports) {
@@ -162,6 +269,37 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     };
   }
 
+  async function commentsView(
+    page: Page,
+    visitor: Visitor | null,
+  ): Promise<CommentsView> {
+    const commenter = visitor && (await store.findCommenter(visitor.id));
+    return {
+      commenter: commenter && { displayName: commenter.displayName },
+      comments: topLevelCommentViews(await store.listComments(page.id)),
+    };
+  }
+
+  // A browser posts as one Commenter, whose display name is the latest it gave.
+  async function commenterFor(
+    site: Site,
+    visitor: Visitor,
+    displayName: string,
+  ) {
+    const commenter = await store.findCommenter(visitor.id);
+    if (!commenter) {
+      return store.createCommenter({
+        siteId: site.id,
+        visitorId: visitor.id,
+        displayName,
+      });
+    }
+    if (commenter.displayName !== displayName) {
+      await store.renameCommenter(commenter.id, displayName);
+    }
+    return { ...commenter, displayName };
+  }
+
   return {
     /** What a Widget shows on a Page; an unknown Page Key creates the Page. */
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
@@ -176,10 +314,72 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       });
       const recognized = await recognize(site, request.browserToken);
 
+      const visitor = recognized?.visitor ?? null;
+
       return {
         outcome: "loaded",
         page,
-        ...(await reactionsView(site, page, recognized?.visitor ?? null)),
+        ...(await reactionsView(site, page, visitor)),
+        ...(await commentsView(page, visitor)),
+      };
+    },
+
+    /**
+     * Publishes a Comment or a Reply in plain text. The browser posts as a
+     * Guest Commenter under the display name, and no email is asked.
+     */
+    async postComment(request: CommentRequest): Promise<CommentResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      const { site } = allowed;
+
+      const page = await store.findPage(site.id, request.pageKey);
+      if (!page) return { outcome: "page-not-found" };
+
+      const displayName = request.displayName
+        .normalize("NFC")
+        .trim()
+        .replace(/\s+/gu, " ");
+      if (!displayName || lengthOf(displayName) > maxDisplayNameLength) {
+        return { outcome: "invalid-display-name" };
+      }
+      const text = request.text
+        .normalize("NFC")
+        .replace(/\r\n?/gu, "\n")
+        .trim();
+      if (!text) return { outcome: "empty-comment" };
+
+      let answered: Comment | null = null;
+      if (request.replyTo !== null) {
+        answered = await store.findComment(page.id, request.replyTo);
+        if (!answered) return { outcome: "comment-not-found" };
+      }
+      const placed = answered
+        ? placeReply(answered, text)
+        : { topLevelCommentId: null, text };
+      // The limit holds for every Comment as stored, @mention included.
+      if (lengthOf(placed.text) > maxCommentLength) {
+        return { outcome: "comment-too-long" };
+      }
+
+      const { visitor, browserToken } =
+        (await recognize(site, request.browserToken)) ??
+        (await issueBrowserToken(site));
+      const commenter = await commenterFor(site, visitor, displayName);
+      const createdAt = clock.now();
+      const { id } = await store.createComment({
+        pageId: page.id,
+        commenterId: commenter.id,
+        ...placed,
+        createdAt,
+      });
+
+      return {
+        outcome: "posted",
+        browserToken,
+        commenter: { displayName },
+        comment: commentView({ id, commenter, ...placed, createdAt }),
+        topLevelCommentId: placed.topLevelCommentId,
       };
     },
 
