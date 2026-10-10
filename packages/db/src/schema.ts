@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   index,
   integer,
   pgTable,
@@ -139,6 +140,11 @@ export const comments = pgTable(
     commenterId: uuid("commenter_id")
       .notNull()
       .references(() => commenters.id, { onDelete: "cascade" }),
+    /** The top-level Comment a Reply sits under, or null for a top-level Comment. */
+    topLevelCommentId: uuid("top_level_comment_id").references(
+      (): AnyPgColumn => comments.id,
+      { onDelete: "cascade" },
+    ),
     /** Plain text, as its Commenter wrote it. */
     text: text("text").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

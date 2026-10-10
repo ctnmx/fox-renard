@@ -42,10 +42,13 @@ export interface Store {
   createComment(comment: {
     pageId: string;
     commenterId: string;
+    topLevelCommentId: string | null;
     text: string;
     createdAt: Date;
   }): Promise<{ id: string }>;
-  /** A Page's Comments, newest first. */
+  /** One of a Page's Comments, top-level or Reply. */
+  findComment(pageId: string, commentId: string): Promise<Comment | null>;
+  /** A Page's Comments and Replies, newest first. */
   listComments(pageId: string): Promise<Comment[]>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;

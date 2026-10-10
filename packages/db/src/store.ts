@@ -26,6 +26,23 @@ export function createStore(db: Database): Store {
     return page;
   }
 
+  function selectComments() {
+    return db
+      .select({
+        id: comments.id,
+        commenter: {
+          id: commenters.id,
+          displayName: commenters.displayName,
+        },
+        topLevelCommentId: comments.topLevelCommentId,
+        text: comments.text,
+        createdAt: comments.createdAt,
+      })
+      .from(comments)
+      .innerJoin(commenters, eq(commenters.id, comments.commenterId))
+      .$dynamic();
+  }
+
   async function insertPage(siteId: string, page: Omit<Page, "id">) {
     const [inserted] = await db
       .insert(pages)
@@ -188,22 +205,17 @@ export function createStore(db: Database): Store {
       return created;
     },
 
+    async findComment(pageId, commentId) {
+      const [comment] = await selectComments().where(
+        and(eq(comments.pageId, pageId), eq(comments.id, commentId)),
+      );
+      return comment ?? null;
+    },
+
     async listComments(pageId) {
-      const rows = await db
-        .select({
-          id: comments.id,
-          text: comments.text,
-          createdAt: comments.createdAt,
-          commenter: {
-            id: commenters.id,
-            displayName: commenters.displayName,
-          },
-        })
-        .from(comments)
-        .innerJoin(commenters, eq(commenters.id, comments.commenterId))
+      return selectComments()
         .where(eq(comments.pageId, pageId))
         .orderBy(desc(comments.createdAt), desc(comments.id));
-      return rows;
     },
 
     async recordRateLimitHit(hit) {

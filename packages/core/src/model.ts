@@ -47,6 +47,8 @@ export interface Commenter {
 export interface Comment {
   id: string;
   commenter: Commenter;
+  /** The top-level Comment a Reply sits under, or `null` for a top-level Comment. */
+  topLevelCommentId: string | null;
   text: string;
   createdAt: Date;
 }

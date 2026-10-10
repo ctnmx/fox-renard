@@ -43,6 +43,7 @@ const refusals = {
   "site-not-found": 404,
   "domain-not-allowed": 403,
   "page-not-found": 404,
+  "comment-not-found": 404,
   "reaction-option-not-found": 422,
   "invalid-display-name": 422,
   "empty-comment": 422,
@@ -132,12 +133,13 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
         z.object({
           displayName: z.string().max(1000),
           text: z.string().max(20_000),
+          replyTo: z.uuid().optional(),
         }),
       ),
       async (c) => {
         const { siteId, pageKey } = c.req.valid("param");
         const { authorization: browserToken } = c.req.valid("header");
-        const { displayName, text } = c.req.valid("json");
+        const { displayName, text, replyTo } = c.req.valid("json");
 
         const result = await core.postComment({
           siteId,
@@ -146,6 +148,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           browserToken: browserToken ?? null,
           displayName,
           text,
+          replyTo: replyTo ?? null,
         });
         if (result.outcome !== "posted") return refuse(c, result.outcome);
         const { commenter, comment } = result;
