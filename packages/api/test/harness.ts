@@ -1,4 +1,4 @@
-import { createCore } from "@fox-renard/core";
+import { type CommentSort, createCore, type Vote } from "@fox-renard/core";
 import {
   ControllableClock,
   EmailOutbox,
@@ -132,16 +132,18 @@ export async function startTestApi() {
   async function loadWidget({
     page = routeSheet,
     browserToken,
+    sort,
   }: {
     page?: WidgetPage;
     browserToken?: string;
+    sort?: CommentSort;
   } = {}) {
     const response = await client.v1.sites[":siteId"].pages[
       ":pageKey"
     ].widget.$get(
       {
         param: { siteId: page.siteId, pageKey: page.pageKey },
-        query: { url: page.url, title: page.title },
+        query: { url: page.url, title: page.title, sort },
         header: authorization(browserToken),
       },
       { headers: { Origin: page.origin } },
@@ -201,6 +203,33 @@ export async function startTestApi() {
     );
   }
 
+  function putVote({
+    page = routeSheet,
+    origin = page.origin,
+    clientIp = anyClientIp,
+    browserToken,
+    commentId,
+    vote,
+  }: {
+    page?: WidgetPage;
+    origin?: string;
+    clientIp?: string;
+    browserToken?: string;
+    commentId: string;
+    vote: Vote | null;
+  }) {
+    return client.v1.sites[":siteId"].pages[":pageKey"].comments[
+      ":commentId"
+    ].vote.$put(
+      {
+        param: { siteId: page.siteId, pageKey: page.pageKey, commentId },
+        header: authorization(browserToken),
+        json: { vote },
+      },
+      { headers: { Origin: origin, [clientIpHeader]: clientIp } },
+    );
+  }
+
   /**
    * A Visitor's browser. Like the Widget, it keeps the token the API issues
    * it for each Site and sends it back to that Site.
@@ -224,6 +253,24 @@ export async function startTestApi() {
       return { status: response.status, reacted };
     }
 
+    async function tryVote(
+      commentId: string,
+      vote: Vote | null,
+      { page = routeSheet } = {},
+    ) {
+      const response = await putVote({
+        page,
+        clientIp,
+        browserToken: browserTokens.get(page.siteId),
+        commentId,
+        vote,
+      });
+      if (response.status !== 200) return { status: response.status };
+      const voted = await response.json();
+      browserTokens.set(page.siteId, voted.browserToken);
+      return { status: response.status, voted };
+    }
+
     return {
       /** The browser's token for Recto Verso. */
       get browserToken() {
@@ -238,6 +285,16 @@ export async function startTestApi() {
           throw new Error(`Expected the Reaction to count, got ${status}`);
         }
         return reacted;
+      },
+
+      tryVote,
+
+      /** Gives, changes or, with `null`, withdraws the browser's Vote on a Comment. */
+      async vote(commentId: string, vote: Vote | null) {
+        const { status, voted } = await tryVote(commentId, vote);
+        if (!voted)
+          throw new Error(`Expected the Vote to count, got ${status}`);
+        return voted;
       },
 
       async post(
@@ -265,10 +322,17 @@ export async function startTestApi() {
         return posted;
       },
 
-      loadWidget({ page = routeSheet } = {}) {
+      loadWidget({
+        page = routeSheet,
+        sort,
+      }: {
+        page?: WidgetPage;
+        sort?: CommentSort;
+      } = {}) {
         return loadWidget({
           page,
           browserToken: browserTokens.get(page.siteId),
+          sort,
         });
       },
     };
@@ -279,6 +343,7 @@ export async function startTestApi() {
     loadWidget,
     putReaction,
     postComment,
+    putVote,
     newBrowser,
     clock,
     outbox,

@@ -131,7 +131,9 @@
 .input:focus-visible,
 .post:focus-visible,
 .cancel:focus-visible,
-.reply:focus-visible {
+.reply:focus-visible,
+.vote:focus-visible,
+.sort-select:focus-visible {
   outline: 3px solid #1d6f42;
   outline-offset: 2px;
 }
@@ -171,10 +173,32 @@
   cursor: progress;
 }
 
+.sort {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 14px;
+}
+
+.sort-select {
+  padding: 4px 8px;
+  border: 1px solid #d8d4cc;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
 .comment-list {
   margin: 24px 0 0;
   padding: 0;
   list-style: none;
+}
+
+.sort + .comment-list {
+  margin-top: 12px;
 }
 
 .comment {
@@ -226,8 +250,45 @@
   color: #1d6f42;
 }
 
+.comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.votes {
+  display: flex;
+  gap: 4px;
+}
+
+.vote {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid #d8d4cc;
+  border-radius: 999px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.vote:hover {
+  border-color: #1d6f42;
+}
+
+.vote[aria-pressed="true"] {
+  border-color: #1d6f42;
+  background: #e6f2ea;
+  font-weight: 700;
+}
+
 .reply {
-  margin: 4px 0 0;
+  margin: 0;
   padding: 0;
   border: 0;
   background: none;

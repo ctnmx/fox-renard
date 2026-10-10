@@ -19,6 +19,12 @@ const fr = {
   replyLabel: "Ta réponse",
   replyPlaceholder: "Écris ta réponse",
   cancel: "Annuler",
+  voteUp: "Voter pour ({count})",
+  voteDown: "Voter contre ({count})",
+  sortBy: "Trier par",
+  sortTop: "Top",
+  sortNewest: "Plus récents",
+  sortOldest: "Plus anciens",
 };
 
 /** The language of the strings above, for dates and numbers. */

@@ -1,4 +1,9 @@
-import type { Client, WidgetData } from "@fox-renard/api/client";
+import type {
+  Client,
+  CommentSort,
+  Vote,
+  WidgetData,
+} from "@fox-renard/api/client";
 import { keepBrowserToken, readBrowserToken } from "./browser-token";
 
 /** The Page a Widget sits on, and the client that reaches its Site's API. */
@@ -23,14 +28,20 @@ function pageRequest({ client, siteId, pageKey }: PageConnection) {
   };
 }
 
+/** What the Widget shows, with the Page's top-level Comments in `sort` order. */
 export async function fetchWidgetData(
   page: PageConnection,
+  sort: CommentSort,
 ): Promise<WidgetData> {
   const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.widget.$get({
     param,
-    // The address without query or fragment, so tracking parameters never stick.
-    query: { url: location.origin + location.pathname, title: document.title },
+    query: {
+      // The address without query or fragment, so tracking parameters never stick.
+      url: location.origin + location.pathname,
+      title: document.title,
+      sort,
+    },
     header,
   });
   if (response.status !== 200) {
@@ -56,6 +67,26 @@ export async function putReaction(
   const reacted = await response.json();
   keepBrowserToken(page.siteId, reacted.browserToken);
   return reacted;
+}
+
+/** Gives, changes or, with `null`, withdraws the browser's Vote on a Comment. */
+export async function putVote(
+  page: PageConnection,
+  commentId: string,
+  vote: Vote | null,
+) {
+  const { endpoints, param, header } = pageRequest(page);
+  const response = await endpoints.comments[":commentId"].vote.$put({
+    param: { ...param, commentId },
+    header,
+    json: { vote },
+  });
+  if (response.status !== 200) {
+    throw new Error(`Fox Renard: voting answered ${response.status}.`);
+  }
+  const voted = await response.json();
+  keepBrowserToken(page.siteId, voted.browserToken);
+  return voted;
 }
 
 /** The API refused a request, for the reason its error code gives. */

@@ -43,6 +43,12 @@ export interface Commenter {
   displayName: string;
 }
 
+/** A Visitor's thumbs-up or thumbs-down on a Comment. */
+export type Vote = "up" | "down";
+
+/** How many Visitors hold each Vote on a Comment. */
+export type VoteCounts = Record<Vote, number>;
+
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {
   id: string;
@@ -51,4 +57,5 @@ export interface Comment {
   topLevelCommentId: string | null;
   text: string;
   createdAt: Date;
+  voteCounts: VoteCounts;
 }

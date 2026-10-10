@@ -28,6 +28,8 @@ describe("a Guest posts a Comment", () => {
         commenter: { displayName: "Marie Dupont", initials: "MD" },
         body: [{ type: "text", text: "Superbe boucle, faite en juin." }],
         createdAt: api.clock.now().toISOString(),
+        voteCounts: { up: 0, down: 0 },
+        vote: null,
         replies: [],
       },
     ]);
