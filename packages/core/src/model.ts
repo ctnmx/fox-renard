@@ -43,8 +43,10 @@ export interface Commenter {
   displayName: string;
 }
 
+export const voteDirections = ["up", "down"] as const;
+
 /** A Visitor's thumbs-up or thumbs-down on a Comment. */
-export type Vote = "up" | "down";
+export type Vote = (typeof voteDirections)[number];
 
 /** How many Visitors hold each Vote on a Comment. */
 export type VoteCounts = Record<Vote, number>;

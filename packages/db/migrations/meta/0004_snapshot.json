@@ -1,5 +1,5 @@
 {
-  "id": "f94e4203-b051-41b4-af84-2132f11f527c",
+  "id": "7929bff0-e0a7-4506-a63e-35a2f385694d",
   "prevId": "0cf72376-c483-4aba-9fda-d0659584cec9",
   "version": "7",
   "dialect": "postgresql",
@@ -398,7 +398,8 @@
           "name": "action",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'reaction'"
         },
         "fingerprint": {
           "name": "fingerprint",

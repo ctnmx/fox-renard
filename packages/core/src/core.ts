@@ -29,13 +29,18 @@ interface PageRequest extends SiteRequest {
 }
 
 /** The orders a Visitor can list a Page's top-level Comments in. */
-export type CommentSort = "top" | "newest" | "oldest";
+export const commentSorts = ["top", "newest", "oldest"] as const;
+
+export type CommentSort = (typeof commentSorts)[number];
 
 export interface WidgetRequest extends PageRequest {
   url: string;
   title: string;
-  /** The order of the top-level Comments; Replies stay oldest first. */
-  sort: CommentSort;
+  /**
+   * The order of the top-level Comments, or `null` for the default, Top.
+   * Replies stay oldest first.
+   */
+  sort: CommentSort | null;
 }
 
 /** A browser's request that abuse limits count. */
@@ -96,7 +101,8 @@ export interface TopLevelCommentView extends CommentView {
 interface CommentsView {
   /** The Commenter this browser posts as, so it never retypes its display name. */
   commenter: Pick<Commenter, "displayName"> | null;
-  /** In the order the request asked for. */
+  /** The order `comments` are listed in. */
+  sort: CommentSort;
   comments: TopLevelCommentView[];
 }
 
@@ -386,6 +392,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     );
     return {
       commenter: commenter && { displayName: commenter.displayName },
+      sort,
       comments: sorted(newestFirst, sort),
     };
   }
@@ -430,7 +437,7 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
         outcome: "loaded",
         page,
         ...(await reactionsView(site, page, visitor)),
-        ...(await commentsView(page, visitor, request.sort)),
+        ...(await commentsView(page, visitor, request.sort ?? "top")),
       };
     },
 
@@ -563,8 +570,8 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
 
     /**
      * Erases what abuse limits no longer remember, fingerprints included.
-     * The platform runs it every hour, since reacting erases only when
-     * someone reacts (ADR-0006).
+     * The platform runs it every hour, since reacting and voting erase only
+     * when someone reacts or votes (ADR-0006).
      */
     eraseExpiredFingerprints,
   };

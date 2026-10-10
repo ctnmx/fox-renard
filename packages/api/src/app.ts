@@ -1,4 +1,4 @@
-import type { Core } from "@fox-renard/core";
+import { type Core, commentSorts, voteDirections } from "@fox-renard/core";
 import { zValidator } from "@hono/zod-validator";
 import { type Context, Hono, type ValidationTargets } from "hono";
 import type { GetConnInfo } from "hono/conninfo";
@@ -72,7 +72,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
         z.object({
           url: z.url({ protocol: /^https?$/ }).max(2048),
           title: z.string().max(10_000),
-          sort: z.enum(["top", "newest", "oldest"]).default("top"),
+          sort: z.enum(commentSorts).optional(),
         }),
       ),
       validate("header", browserTokenHeader),
@@ -90,12 +90,19 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           url,
           title,
           browserToken: browserToken ?? null,
-          sort,
+          sort: sort ?? null,
         });
         if (result.outcome !== "loaded") return refuse(c, result.outcome);
         const { page, reactionSet, reaction, commenter, comments } = result;
         return c.json(
-          { page, reactionSet, reaction, commenter, comments },
+          {
+            page,
+            reactionSet,
+            reaction,
+            commenter,
+            sort: result.sort,
+            comments,
+          },
           200,
         );
       },
@@ -169,7 +176,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
       "/v1/sites/:siteId/pages/:pageKey/comments/:commentId/vote",
       validate("param", pageParams.extend({ commentId: z.uuid() })),
       validate("header", browserTokenHeader),
-      validate("json", z.object({ vote: z.enum(["up", "down"]).nullable() })),
+      validate("json", z.object({ vote: z.enum(voteDirections).nullable() })),
       async (c) => {
         const { siteId, pageKey, commentId } = c.req.valid("param");
         const { authorization: browserToken } = c.req.valid("header");
@@ -185,9 +192,12 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           vote,
         });
         if (result.outcome !== "voted") return refuse(c, result.outcome);
-        const { voteCounts, vote: held } = result;
         return c.json(
-          { browserToken: result.browserToken, voteCounts, vote: held },
+          {
+            browserToken: result.browserToken,
+            voteCounts: result.voteCounts,
+            vote: result.vote,
+          },
           200,
         );
       },

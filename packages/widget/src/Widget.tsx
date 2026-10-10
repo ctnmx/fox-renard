@@ -7,17 +7,18 @@ import { fetchWidgetData, type PageConnection } from "./requests";
 
 export function Widget(page: PageConnection) {
   const [data, setData] = useState<WidgetData>();
-  const [sort, setSort] = useState<CommentSort>("top");
+  // The order the Visitor chose, if any; the Widget data tells the default.
+  const [sort, setSort] = useState<CommentSort | null>(null);
   const { client, siteId, pageKey } = page;
 
   useEffect(() => {
     // The order chosen last wins over one still loading.
-    let chosen = true;
+    let latest = true;
     fetchWidgetData({ client, siteId, pageKey }, sort).then((data) => {
-      if (chosen) setData(data);
+      if (latest) setData(data);
     }, console.error);
     return () => {
-      chosen = false;
+      latest = false;
     };
   }, [client, siteId, pageKey, sort]);
 
@@ -37,7 +38,7 @@ export function Widget(page: PageConnection) {
         page={page}
         commenter={data.commenter}
         comments={data.comments}
-        sort={sort}
+        sort={sort ?? data.sort}
         onSort={setSort}
         onVoted={(commentId, voted) =>
           setData(

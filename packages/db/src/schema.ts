@@ -179,8 +179,13 @@ export const rateLimitHits = pgTable(
     siteId: uuid("site_id")
       .notNull()
       .references(() => sites.id, { onDelete: "cascade" }),
-    /** Each action counts against limits of its own. */
-    action: text("action", { enum: ["reaction", "vote"] }).notNull(),
+    /**
+     * Each action counts against limits of its own. Hits recorded before
+     * Votes existed were all Reactions.
+     */
+    action: text("action", { enum: ["reaction", "vote"] })
+      .notNull()
+      .default("reaction"),
     /** A keyed hash of the client's network, never its IP address. */
     fingerprint: text("fingerprint").notNull(),
     visitorId: uuid("visitor_id")

@@ -8,6 +8,7 @@ type TopLevelComment = WidgetData["comments"][number];
 type Comment = TopLevelComment["replies"][number];
 type Posted = Awaited<ReturnType<typeof postComment>>;
 type Voted = Pick<Comment, "voteCounts" | "vote">;
+type OnVoted = (commentId: string, voted: Voted) => void;
 
 /** The label of each order the Visitor can list Comments in. */
 const sortLabels: Record<CommentSort, MessageKey> = {
@@ -70,7 +71,7 @@ function Votes({
 }: {
   page: PageConnection;
   comment: Comment;
-  onVoted: (commentId: string, voted: Voted) => void;
+  onVoted: OnVoted;
 }) {
   // One request at a time, so a double tap cannot issue two browser tokens.
   const voting = useRef(false);
@@ -134,7 +135,7 @@ function CommentArticle({
 }: {
   page: PageConnection;
   comment: Comment;
-  onVoted: (commentId: string, voted: Voted) => void;
+  onVoted: OnVoted;
   /** Opens a Reply to this Comment; `opener` gets the focus back once it closes. */
   onReply: (opener: HTMLButtonElement) => void;
 }) {
@@ -296,7 +297,7 @@ export function Comments({
   /** The order of the top-level Comments; Replies stay oldest first. */
   sort: CommentSort;
   onSort: (sort: CommentSort) => void;
-  onVoted: (commentId: string, voted: Voted) => void;
+  onVoted: OnVoted;
   onPosted: (posted: Posted) => void;
 }) {
   // The browser's Commenter fills in the display name, so it is typed once.

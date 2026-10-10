@@ -28,10 +28,13 @@ function pageRequest({ client, siteId, pageKey }: PageConnection) {
   };
 }
 
-/** What the Widget shows, with the Page's top-level Comments in `sort` order. */
+/**
+ * What the Widget shows, with the Page's top-level Comments in `sort` order,
+ * or in the default order for `null`.
+ */
 export async function fetchWidgetData(
   page: PageConnection,
-  sort: CommentSort,
+  sort: CommentSort | null,
 ): Promise<WidgetData> {
   const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.widget.$get({
@@ -40,7 +43,7 @@ export async function fetchWidgetData(
       // The address without query or fragment, so tracking parameters never stick.
       url: location.origin + location.pathname,
       title: document.title,
-      sort,
+      sort: sort ?? undefined,
     },
     header,
   });

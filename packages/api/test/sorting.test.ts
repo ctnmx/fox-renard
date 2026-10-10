@@ -21,13 +21,13 @@ function displayNamesIn(data: {
  */
 async function postScoredComments() {
   await api.loadWidget();
-  const scores = [
+  const votesByCommenter = [
     ["Marie", ["up", "up"]],
     ["Paul", ["up", "down"]],
     ["Jeanne", ["down"]],
     ["Luc", []],
   ] as const;
-  for (const [displayName, votes] of scores) {
+  for (const [displayName, votes] of votesByCommenter) {
     const { comment } = await api
       .newBrowser()
       .post(displayName, "Superbe boucle.");
@@ -41,7 +41,9 @@ describe("Comments are sorted", () => {
     await postScoredComments();
 
     const top = ["Marie", "Luc", "Paul", "Jeanne"];
-    expect(displayNamesIn(await api.loadWidget())).toEqual(top);
+    const byDefault = await api.loadWidget();
+    expect(byDefault.sort).toBe("top");
+    expect(displayNamesIn(byDefault)).toEqual(top);
     expect(displayNamesIn(await api.loadWidget({ sort: "top" }))).toEqual(top);
   });
 
@@ -53,7 +55,9 @@ describe("Comments are sorted", () => {
     async (sort, order) => {
       await postScoredComments();
 
-      expect(displayNamesIn(await api.loadWidget({ sort }))).toEqual(order);
+      const sorted = await api.loadWidget({ sort });
+      expect(sorted.sort).toBe(sort);
+      expect(displayNamesIn(sorted)).toEqual(order);
     },
   );
 
