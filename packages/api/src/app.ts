@@ -1,6 +1,6 @@
 import type { Core } from "@fox-renard/core";
 import { zValidator } from "@hono/zod-validator";
-import { Hono, type ValidationTargets } from "hono";
+import { type Context, Hono, type ValidationTargets } from "hono";
 import type { GetConnInfo } from "hono/conninfo";
 import { cors } from "hono/cors";
 import { z } from "zod";
@@ -38,6 +38,24 @@ const browserTokenHeader = z.object({
 // so any page may read what they answer.
 const publicCors = cors();
 
+/** The status each of Core's refusals answers with. */
+const refusals = {
+  "site-not-found": 404,
+  "domain-not-allowed": 403,
+  "page-not-found": 404,
+  "comment-not-found": 404,
+  "reaction-option-not-found": 422,
+  "invalid-display-name": 422,
+  "empty-comment": 422,
+  "comment-too-long": 422,
+  "rate-limited": 429,
+} as const;
+
+/** Answers a refusal with its status and an error code such as `site_not_found`. */
+function refuse(c: Context, outcome: keyof typeof refusals) {
+  return c.json({ error: outcome.replaceAll("-", "_") }, refusals[outcome]);
+}
+
 export interface Platform {
   /** Tells the client's IP address, which only the platform knows. */
   getConnInfo: GetConnInfo;
@@ -72,16 +90,12 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           title,
           browserToken: browserToken ?? null,
         });
-        switch (result.outcome) {
-          case "site-not-found":
-            return c.json({ error: "site_not_found" }, 404);
-          case "domain-not-allowed":
-            return c.json({ error: "domain_not_allowed" }, 403);
-          case "loaded": {
-            const { page, reactionSet, reaction } = result;
-            return c.json({ page, reactionSet, reaction }, 200);
-          }
-        }
+        if (result.outcome !== "loaded") return refuse(c, result.outcome);
+        const { page, reactionSet, reaction, commenter, comments } = result;
+        return c.json(
+          { page, reactionSet, reaction, commenter, comments },
+          200,
+        );
       },
     )
     .put(
@@ -102,22 +116,51 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           clientIp: getConnInfo(c).remote.address ?? null,
           optionId,
         });
-        switch (result.outcome) {
-          case "site-not-found":
-            return c.json({ error: "site_not_found" }, 404);
-          case "domain-not-allowed":
-            return c.json({ error: "domain_not_allowed" }, 403);
-          case "page-not-found":
-            return c.json({ error: "page_not_found" }, 404);
-          case "reaction-option-not-found":
-            return c.json({ error: "reaction_option_not_found" }, 422);
-          case "rate-limited":
-            return c.json({ error: "rate_limited" }, 429);
-          case "reacted": {
-            const { browserToken, reactionSet, reaction } = result;
-            return c.json({ browserToken, reactionSet, reaction }, 200);
-          }
-        }
+        if (result.outcome !== "reacted") return refuse(c, result.outcome);
+        const { reactionSet, reaction } = result;
+        return c.json(
+          { browserToken: result.browserToken, reactionSet, reaction },
+          200,
+        );
+      },
+    )
+    .post(
+      "/v1/sites/:siteId/pages/:pageKey/comments",
+      validate("param", pageParams),
+      validate("header", browserTokenHeader),
+      validate(
+        "json",
+        z.object({
+          displayName: z.string().max(1000),
+          text: z.string().max(20_000),
+          replyTo: z.uuid().optional(),
+        }),
+      ),
+      async (c) => {
+        const { siteId, pageKey } = c.req.valid("param");
+        const { authorization: browserToken } = c.req.valid("header");
+        const { displayName, text, replyTo } = c.req.valid("json");
+
+        const result = await core.postComment({
+          siteId,
+          domain: requestingDomain(c.req.header("Origin")),
+          pageKey,
+          browserToken: browserToken ?? null,
+          displayName,
+          text,
+          replyTo: replyTo ?? null,
+        });
+        if (result.outcome !== "posted") return refuse(c, result.outcome);
+        const { commenter, comment, topLevelCommentId } = result;
+        return c.json(
+          {
+            browserToken: result.browserToken,
+            commenter,
+            comment,
+            topLevelCommentId,
+          },
+          201,
+        );
       },
     );
 }

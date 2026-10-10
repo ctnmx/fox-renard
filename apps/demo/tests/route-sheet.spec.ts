@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
+import { apiOrigin, siteOrigin } from "../src/addresses";
 
 const prompt = "Alors, cet itinéraire ?";
 
@@ -142,7 +143,9 @@ test.describe("Reactions on a route sheet", () => {
       "aria-pressed",
       "false",
     );
-    await expect(widget.getByRole("button")).toHaveText(
+    await expect(
+      widget.getByRole("group", { name: prompt }).getByRole("button"),
+    ).toHaveText(
       [/Je m'inspire\s*0/, /Je le prépare\s*0/, /Je l'ai fait !\s*1/],
       { useInnerText: true },
     );
@@ -154,5 +157,172 @@ test.describe("Reactions on a route sheet", () => {
       "false",
     );
     await expect(option("Je l'ai fait !")).toContainText("0");
+  });
+});
+
+test.describe("Comments on a route sheet", () => {
+  test("a Guest posts a Comment, sees it listed, and finds their display name prefilled after a reload", async ({
+    page,
+  }) => {
+    const thirdPartyRequests: string[] = [];
+    page.on("request", (request) => {
+      const { origin } = new URL(request.url());
+      if (origin !== siteOrigin && origin !== apiOrigin) {
+        thirdPartyRequests.push(request.url());
+      }
+    });
+
+    // A route sheet of its own, so it starts with no Comment.
+    await page.goto(`/article/essai-${randomUUID()}`);
+    let widget = await scrollToWidget(page);
+    const displayName = () => widget.getByRole("textbox", { name: "Ton nom" });
+    const commentBox = widget.getByRole("textbox", { name: "Ton commentaire" });
+    await expect(commentBox).toHaveAttribute(
+      "placeholder",
+      "Écris ton commentaire",
+    );
+
+    await displayName().fill("Marie Dupont");
+    await commentBox.fill(
+      "Superbe boucle !\n<b>Trace</b> : https://example.com/trace.gpx",
+    );
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    const comment = widget.getByRole("article");
+    await expect(comment).toHaveCount(1);
+    await expect(commentBox).toHaveValue("");
+    await expect(comment.getByText("Marie Dupont")).toBeVisible();
+    await expect(comment.getByText("MD", { exact: true })).toBeVisible();
+    await expect(comment.getByText("à l'instant")).toBeVisible();
+    // The line break shows, and the HTML reads as written.
+    expect(
+      await comment
+        .getByText(/Superbe boucle/)
+        .evaluate((body: HTMLElement) => body.innerText),
+    ).toBe("Superbe boucle !\n<b>Trace</b> : https://example.com/trace.gpx");
+    const link = comment.getByRole("link", {
+      name: "https://example.com/trace.gpx",
+    });
+    await expect(link).toHaveAttribute("href", "https://example.com/trace.gpx");
+    await expect(link).toHaveAttribute("rel", /\bnofollow\b/);
+    await expect(link).toHaveAttribute("rel", /\bugc\b/);
+
+    await page.reload();
+    widget = await scrollToWidget(page);
+    await expect(displayName()).toHaveValue("Marie Dupont");
+    await expect(widget.getByRole("article")).toHaveCount(1);
+    expect(thirdPartyRequests).toEqual([]);
+  });
+
+  test("a Comment over the length limit is refused with a message", async ({
+    page,
+  }) => {
+    await page.goto(`/article/essai-${randomUUID()}`);
+    const widget = await scrollToWidget(page);
+
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("é".repeat(5001));
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    await expect(widget.getByRole("alert")).toHaveText(
+      "Ton commentaire est trop long.",
+    );
+    await expect(widget.getByRole("article")).toHaveCount(0);
+  });
+});
+
+test.describe("Replies on a route sheet", () => {
+  test("a Guest replies to a Comment, its Commenter replies to that Reply, and both Replies sit under the Comment", async ({
+    page,
+    browser,
+  }) => {
+    // A route sheet of its own, so it starts with no Comment.
+    const routeSheet = `${siteOrigin}/article/essai-${randomUUID()}`;
+    await page.goto(routeSheet);
+    let marie = await scrollToWidget(page);
+    await marie.getByRole("textbox", { name: "Ton nom" }).fill("Marie Dupont");
+    await marie
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Superbe boucle, faite en juin.");
+    await marie.getByRole("button", { name: "Publier" }).click();
+    await expect(marie.getByRole("article")).toHaveCount(1);
+
+    // Paul replies from a browser of his own.
+    const paulsPage = await (await browser.newContext()).newPage();
+    await paulsPage.goto(routeSheet);
+    const paul = await scrollToWidget(paulsPage);
+    await paul.getByRole("button", { name: "Répondre" }).click();
+    const paulsForm = paul.getByRole("form", {
+      name: "Répondre à Marie Dupont",
+    });
+    await expect(
+      paulsForm.getByRole("textbox", { name: "Ton nom" }),
+    ).toBeFocused();
+    await paulsForm
+      .getByRole("textbox", { name: "Ton nom" })
+      .fill("Paul Martin");
+    await paulsForm
+      .getByRole("textbox", { name: "Ta réponse" })
+      .fill("Le Pas de l'Aiguille est-il équipé ?");
+    await paulsForm.getByRole("button", { name: "Publier" }).click();
+    await expect(paulsForm).toHaveCount(0);
+    await expect(
+      paul
+        .getByRole("list", { name: "Réponses à Marie Dupont" })
+        .getByRole("article"),
+    ).toHaveText([/Paul Martin[\s\S]*Le Pas de l'Aiguille est-il équipé \?/]);
+
+    // Marie answers Paul's Reply.
+    await page.reload();
+    marie = await scrollToWidget(page);
+    const replies = marie.getByRole("list", {
+      name: "Réponses à Marie Dupont",
+    });
+    await replies.getByRole("button", { name: "Répondre" }).click();
+    const mariesForm = marie.getByRole("form", {
+      name: "Répondre à Paul Martin",
+    });
+    await expect(
+      mariesForm.getByRole("textbox", { name: "Ton nom" }),
+    ).toHaveValue("Marie Dupont");
+    const mariesReply = mariesForm.getByRole("textbox", { name: "Ta réponse" });
+    await expect(mariesReply).toBeFocused();
+    await mariesReply.fill("Oui, avec des câbles.");
+    await mariesForm.getByRole("button", { name: "Publier" }).click();
+
+    await expect(replies.getByRole("article")).toHaveText([
+      /Paul Martin[\s\S]*Le Pas de l'Aiguille est-il équipé \?/,
+      /Marie Dupont[\s\S]*@Paul Martin Oui, avec des câbles\./,
+    ]);
+    await expect(marie.getByRole("article")).toHaveCount(3);
+  });
+
+  test("a Visitor opens a Reply form from the keyboard and cancels it, back on its Répondre button", async ({
+    page,
+  }) => {
+    await page.goto(`/article/essai-${randomUUID()}`);
+    const widget = await scrollToWidget(page);
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie Dupont");
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Superbe boucle.");
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    const reply = widget.getByRole("article").getByRole("button", {
+      name: "Répondre",
+    });
+    await reply.focus();
+    await page.keyboard.press("Enter");
+    const form = widget.getByRole("form", { name: "Répondre à Marie Dupont" });
+    // The display name is known, so the Reply form opens on its text.
+    await expect(
+      form.getByRole("textbox", { name: "Ta réponse" }),
+    ).toBeFocused();
+
+    await form.getByRole("button", { name: "Annuler" }).click();
+    await expect(form).toHaveCount(0);
+    await expect(reply).toBeFocused();
   });
 });

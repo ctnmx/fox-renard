@@ -46,6 +46,12 @@ svg {
   display: none !important;
 }
 
+form,
+input,
+textarea {
+  display: none !important;
+}
+
 /* Rules reaching the Widget's own element through the embed wrapper. */
 .w-embed > * {
   display: inline;
