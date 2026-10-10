@@ -1,3 +1,3 @@
 export type { Database } from "./database";
-export { rectoVerso, seed } from "./seed";
+export { rectoVerso, type SiteSeed, seed, seedSite } from "./seed";
 export { createStore } from "./store";

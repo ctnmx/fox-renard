@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -79,6 +80,60 @@ export const pages = pgTable(
     createdAt: createdAt(),
   },
   (table) => [unique().on(table.siteId, table.key)],
+);
+
+/** A Visitor as one Site knows them: by their browser's token for that Site (ADR-0005). */
+export const visitors = pgTable(
+  "visitors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    /** The SHA-256 of the browser token, which is never stored itself. */
+    tokenHash: text("token_hash").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [unique().on(table.siteId, table.tokenHash)],
+);
+
+export const reactions = pgTable(
+  "reactions",
+  {
+    pageId: uuid("page_id")
+      .notNull()
+      .references(() => pages.id, { onDelete: "cascade" }),
+    visitorId: uuid("visitor_id")
+      .notNull()
+      .references(() => visitors.id, { onDelete: "cascade" }),
+    optionId: uuid("option_id")
+      .notNull()
+      .references(() => reactionOptions.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  // One Reaction per Visitor and Page.
+  (table) => [primaryKey({ columns: [table.pageId, table.visitorId] })],
+);
+
+/** What abuse limits remember of recent Reactions, for 24 hours at most (ADR-0006). */
+export const rateLimitHits = pgTable(
+  "rate_limit_hits",
+  {
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    /** A keyed hash of the client's network, never its IP address. */
+    fingerprint: text("fingerprint").notNull(),
+    visitorId: uuid("visitor_id")
+      .notNull()
+      .references(() => visitors.id, { onDelete: "cascade" }),
+    at: timestamp("at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index().on(table.siteId, table.fingerprint),
+    index().on(table.visitorId),
+    index().on(table.at),
+  ],
 );
 
 export const sitesRelations = relations(sites, ({ many, one }) => ({

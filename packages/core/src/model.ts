@@ -23,3 +23,16 @@ export interface Page {
   url: string;
   title: string;
 }
+
+/**
+ * A Visitor as one Site knows them: by the token their browser holds for that
+ * Site, which no other Site recognizes (ADR-0005).
+ */
+export interface Visitor {
+  id: string;
+}
+
+/** A Visitor's choice of one Reaction Option on a Page. */
+export interface Reaction {
+  optionId: string;
+}

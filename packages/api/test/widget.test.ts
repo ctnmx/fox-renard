@@ -22,7 +22,7 @@ function requestWidget({
   title?: string;
 } = {}) {
   return api.client.v1.sites[":siteId"].pages[":pageKey"].widget.$get(
-    { param: { siteId, pageKey }, query: { url, title } },
+    { param: { siteId, pageKey }, query: { url, title }, header: {} },
     { headers: origin === null ? {} : { Origin: origin } },
   );
 }
@@ -35,7 +35,7 @@ async function pageOf(response: Awaited<ReturnType<typeof requestWidget>>) {
 }
 
 describe("Widget data for a Page", () => {
-  test("an unknown Page Key from an Allowed Domain creates the Page and returns the Reaction Set with zero counts", async () => {
+  test("an unknown Page Key from an Allowed Domain creates the Page and returns the Reaction Set with zero counts and no Reaction", async () => {
     const response = await requestWidget();
 
     expect(response.status).toBe(200);
@@ -69,6 +69,7 @@ describe("Widget data for a Page", () => {
           },
         ],
       },
+      reaction: null,
     });
   });
 

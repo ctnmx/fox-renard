@@ -8,8 +8,21 @@ import {
   sites,
 } from "./schema";
 
+/** An Organization with one Site, its Allowed Domains and its Reaction Set. */
+export interface SiteSeed {
+  name: string;
+  organizationId: string;
+  siteId: string;
+  allowedDomains: readonly string[];
+  reactionSet: {
+    prompt: string;
+    options: readonly { id: string; pictoEmoji: string; label: string }[];
+  };
+}
+
 /** Fox Renard's first and, in phase 1, only Organization (ADR-0002). */
 export const rectoVerso = {
+  name: "Recto Verso",
   organizationId: "f451151d-29d5-4aef-b667-26688549afbf",
   siteId: "254bba05-acb2-4d9c-b9fd-f967eb7b539e",
   /** rectoverso.co redirects to www; `localhost` serves the local demo route sheet. */
@@ -34,22 +47,23 @@ export const rectoVerso = {
       },
     ],
   },
-} as const;
+} as const satisfies SiteSeed;
 
 /**
- * Seeds Recto Verso: its Organization, one Member, its Site with its Allowed
- * Domains and its Reaction Set. Running it again changes nothing.
+ * Seeds an Organization with one Member and one Site, with the Site's Allowed
+ * Domains and Reaction Set. Running it again changes nothing.
  */
-export async function seed(
+export async function seedSite(
   db: Database,
+  site: SiteSeed,
   { memberEmail }: { memberEmail: string },
 ): Promise<void> {
-  const { organizationId, siteId, reactionSet } = rectoVerso;
+  const { name, organizationId, siteId, reactionSet } = site;
 
   await db.transaction(async (tx) => {
     await tx
       .insert(organizations)
-      .values({ id: organizationId, name: "Recto Verso" })
+      .values({ id: organizationId, name })
       .onConflictDoNothing();
     await tx
       .insert(members)
@@ -57,11 +71,11 @@ export async function seed(
       .onConflictDoNothing();
     await tx
       .insert(sites)
-      .values({ id: siteId, organizationId, name: "Recto Verso" })
+      .values({ id: siteId, organizationId, name })
       .onConflictDoNothing();
     await tx
       .insert(allowedDomains)
-      .values(rectoVerso.allowedDomains.map((domain) => ({ siteId, domain })))
+      .values(site.allowedDomains.map((domain) => ({ siteId, domain })))
       .onConflictDoNothing();
     await tx
       .insert(reactionSets)
@@ -78,4 +92,12 @@ export async function seed(
       )
       .onConflictDoNothing();
   });
+}
+
+/** Seeds Recto Verso, as `seedSite` does. */
+export function seed(
+  db: Database,
+  { memberEmail }: { memberEmail: string },
+): Promise<void> {
+  return seedSite(db, rectoVerso, { memberEmail });
 }

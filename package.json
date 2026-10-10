@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome ci .",
     "format": "biome check --write .",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 
 const prompt = "Alors, cet itinéraire ?";
@@ -96,5 +97,62 @@ test.describe("the Widget on a route sheet", () => {
     });
     await expect(poweredBy).toBeVisible();
     await expect(poweredBy).toHaveAttribute("href", "https://foxrenard.com");
+  });
+});
+
+test.describe("Reactions on a route sheet", () => {
+  test("a Visitor reacts, still sees their Reaction after a reload, changes it, then removes it", async ({
+    page,
+  }) => {
+    // A route sheet of its own, so its counts start at zero.
+    await page.goto(`/article/essai-${randomUUID()}`);
+    let widget = await scrollToWidget(page);
+    const option = (label: string) =>
+      widget.getByRole("button", { name: label });
+
+    await option("Je le prépare").click();
+    await expect(option("Je le prépare")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(option("Je le prépare")).toContainText("1");
+
+    await page.reload();
+    widget = await scrollToWidget(page);
+    await expect(option("Je le prépare")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(option("Je l'ai fait !")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    const background = (label: string) =>
+      option(label).evaluate((button) => getComputedStyle(button).background);
+    expect(await background("Je le prépare")).not.toBe(
+      await background("Je l'ai fait !"),
+    );
+
+    await option("Je l'ai fait !").click();
+    await expect(option("Je l'ai fait !")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(option("Je le prépare")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(widget.getByRole("button")).toHaveText(
+      [/Je m'inspire\s*0/, /Je le prépare\s*0/, /Je l'ai fait !\s*1/],
+      { useInnerText: true },
+    );
+
+    // Tapping the highlighted option again removes the Reaction.
+    await option("Je l'ai fait !").click();
+    await expect(option("Je l'ai fait !")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(option("Je l'ai fait !")).toContainText("0");
   });
 });
