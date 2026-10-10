@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   index,
   integer,
   pgTable,
@@ -139,6 +140,14 @@ export const comments = pgTable(
     commenterId: uuid("commenter_id")
       .notNull()
       .references(() => commenters.id, { onDelete: "cascade" }),
+    /**
+     * The top-level Comment a Reply sits under, or null for a top-level
+     * Comment. A Comment with Replies leaves a placeholder rather than being
+     * deleted, so deleting its row fails.
+     */
+    topLevelCommentId: uuid("top_level_comment_id").references(
+      (): AnyPgColumn => comments.id,
+    ),
     /** Plain text, as its Commenter wrote it. */
     text: text("text").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

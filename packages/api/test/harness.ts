@@ -181,18 +181,21 @@ export async function startTestApi() {
     browserToken,
     displayName,
     text,
+    replyTo,
   }: {
     page?: WidgetPage;
     origin?: string;
     browserToken?: string;
     displayName: string;
     text: string;
+    /** The id of the Comment this one Replies to. */
+    replyTo?: string;
   }) {
     return client.v1.sites[":siteId"].pages[":pageKey"].comments.$post(
       {
         param: { siteId: page.siteId, pageKey: page.pageKey },
         header: authorization(browserToken),
-        json: { displayName, text },
+        json: { displayName, text, replyTo },
       },
       { headers: { Origin: origin } },
     );
@@ -240,13 +243,17 @@ export async function startTestApi() {
       async post(
         displayName: string,
         text: string,
-        { page = routeSheet } = {},
+        {
+          page = routeSheet,
+          replyTo,
+        }: { page?: WidgetPage; replyTo?: string } = {},
       ) {
         const response = await postComment({
           page,
           browserToken: browserTokens.get(page.siteId),
           displayName,
           text,
+          replyTo,
         });
         if (response.status !== 201) {
           throw new Error(
