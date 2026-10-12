@@ -36,6 +36,13 @@
       "when": 1791651396691,
       "tag": "0004_votes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791830270575,
+      "tag": "0005_magic-links",
+      "breakpoints": true
     }
   ]
 }

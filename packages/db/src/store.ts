@@ -1,9 +1,20 @@
 import type { Page, Store, Vote } from "@fox-renard/core";
-import { and, count, desc, eq, lte, or, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  isNotNull,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { Database } from "./database";
 import {
   commenters,
   comments,
+  magicLinks,
   pages,
   rateLimitHits,
   reactions,
@@ -12,6 +23,12 @@ import {
 } from "./schema";
 
 export function createStore(db: Database): Store {
+  const commenterColumns = {
+    id: commenters.id,
+    displayName: commenters.displayName,
+    verified: isNotNull(commenters.verifiedAt).mapWith(Boolean),
+  };
+
   const pageColumns = {
     id: pages.id,
     key: pages.key,
@@ -40,8 +57,9 @@ export function createStore(db: Database): Store {
         id: comments.id,
         commenter: {
           id: commenters.id,
-          displayName: commenters.displayName,
+          verified: commenterColumns.verified,
         },
+        displayName: comments.displayName,
         topLevelCommentId: comments.topLevelCommentId,
         text: comments.text,
         createdAt: comments.createdAt,
@@ -64,7 +82,7 @@ export function createStore(db: Database): Store {
   return {
     async findSite(siteId) {
       const site = await db.query.sites.findFirst({
-        columns: { id: true },
+        columns: { id: true, name: true },
         where: (sites, { eq }) => eq(sites.id, siteId),
         with: {
           allowedDomains: { columns: { domain: true } },
@@ -82,6 +100,7 @@ export function createStore(db: Database): Store {
 
       return {
         id: site.id,
+        name: site.name,
         allowedDomains: site.allowedDomains.map(({ domain }) => domain),
         reactionSet: {
           prompt: site.reactionSet.prompt,
@@ -173,7 +192,7 @@ export function createStore(db: Database): Store {
 
     async findCommenter(visitorId) {
       const [commenter] = await db
-        .select({ id: commenters.id, displayName: commenters.displayName })
+        .select(commenterColumns)
         .from(visitors)
         .innerJoin(commenters, eq(commenters.id, visitors.commenterId))
         .where(eq(visitors.id, visitorId));
@@ -185,10 +204,7 @@ export function createStore(db: Database): Store {
         const [commenter] = await tx
           .insert(commenters)
           .values({ siteId, displayName })
-          .returning({
-            id: commenters.id,
-            displayName: commenters.displayName,
-          });
+          .returning(commenterColumns);
         if (!commenter) throw new Error("The Commenter could not be created");
         await tx
           .update(visitors)
@@ -203,6 +219,43 @@ export function createStore(db: Database): Store {
         .update(commenters)
         .set({ displayName })
         .where(eq(commenters.id, commenterId));
+    },
+
+    async createMagicLink(link) {
+      await db.insert(magicLinks).values(link);
+    },
+
+    async takeMagicLink(siteId, tokenHash) {
+      const [link] = await db
+        .delete(magicLinks)
+        .where(
+          and(
+            eq(magicLinks.siteId, siteId),
+            eq(magicLinks.tokenHash, tokenHash),
+          ),
+        )
+        .returning();
+      return link ?? null;
+    },
+
+    async verifyCommenter({ commenterId, email, visitorId, at }) {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(commenters)
+          .set({ email, verifiedAt: at })
+          .where(eq(commenters.id, commenterId));
+        await tx
+          .update(visitors)
+          .set({ commenterId: null })
+          .where(eq(visitors.commenterId, commenterId));
+        await tx
+          .update(visitors)
+          .set({ commenterId })
+          .where(eq(visitors.id, visitorId));
+        await tx
+          .delete(magicLinks)
+          .where(eq(magicLinks.commenterId, commenterId));
+      });
     },
 
     async createComment(comment) {

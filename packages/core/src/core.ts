@@ -1,5 +1,6 @@
 import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
+import { magicLinkEmail } from "./emails";
 import type {
   Comment,
   Commenter,
@@ -59,6 +60,16 @@ export interface CommentRequest extends PageRequest {
   text: string;
   /** The Comment this one Replies to, or `null` for a top-level Comment. */
   replyTo: string | null;
+  /** The email the Commenter gives to be sent a magic link, or `null`. */
+  email: string | null;
+}
+
+/** A browser following a magic link from the Page it opened on. */
+export interface MagicLinkRequest extends SiteRequest {
+  /** The token the browser holds for this Site, or `null` when it has none. */
+  browserToken: string | null;
+  /** The token the magic link carries. */
+  token: string;
 }
 
 export interface VoteRequest extends RateLimitedRequest {
@@ -84,7 +95,7 @@ interface ReactionsView {
 /** A Comment as Visitors read it. */
 export interface CommentView {
   id: string;
-  commenter: { displayName: string; initials: string };
+  commenter: { displayName: string; initials: string; verified: boolean };
   body: CommentSegment[];
   createdAt: Date;
   voteCounts: VoteCounts;
@@ -97,10 +108,13 @@ export interface TopLevelCommentView extends CommentView {
   replies: CommentView[];
 }
 
+/** The Commenter a browser posts as, as that browser sees them. */
+type CommenterView = Pick<Commenter, "displayName" | "verified">;
+
 /** What a Page shows a browser of its Comments. */
 interface CommentsView {
   /** The Commenter this browser posts as, so it never retypes its display name. */
-  commenter: Pick<Commenter, "displayName"> | null;
+  commenter: CommenterView | null;
   /** The order `comments` are listed in. */
   sort: CommentSort;
   comments: TopLevelCommentView[];
@@ -141,7 +155,7 @@ export type CommentResult =
       outcome: "posted";
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
-      commenter: Pick<Commenter, "displayName">;
+      commenter: CommenterView;
       comment: CommentView;
       /** The top-level Comment a posted Reply sits under, or `null` for a top-level Comment. */
       topLevelCommentId: string | null;
@@ -153,11 +167,25 @@ export type CommentResult =
   | { outcome: "empty-comment" }
   | { outcome: "comment-too-long" };
 
+export type MagicLinkResult =
+  | {
+      outcome: "followed";
+      /** The browser's token for this Site, newly issued if it had none. */
+      browserToken: string;
+      /** The Verified Commenter the browser is now linked to. */
+      commenter: CommenterView;
+    }
+  | SiteRefusal
+  | { outcome: "magic-link-invalid" };
+
 const maxPageTitleLength = 500;
 const maxDisplayNameLength = 50;
 const maxCommentLength = 5000;
 
 const hour = 60 * 60 * 1000;
+
+/** How long a magic link works, as its email tells. */
+const magicLinkLifetime = 1 * hour;
 
 /**
  * How long abuse limits remember a fingerprint or a browser. Erasing every
@@ -248,15 +276,16 @@ function placeReply(
   }
   return {
     topLevelCommentId: answered.topLevelCommentId,
-    text: `@${answered.commenter.displayName} ${text}`,
+    text: `@${answered.displayName} ${text}`,
   };
 }
 
 function commentView(comment: Comment, vote: Vote | null): CommentView {
-  const { displayName } = comment.commenter;
+  const { displayName } = comment;
+  const { verified } = comment.commenter;
   return {
     id: comment.id,
-    commenter: { displayName, initials: initialsOf(displayName) },
+    commenter: { displayName, initials: initialsOf(displayName), verified },
     body: bodyOf(comment.text),
     createdAt: comment.createdAt,
     voteCounts: comment.voteCounts,
@@ -264,7 +293,23 @@ function commentView(comment: Comment, vote: Vote | null): CommentView {
   };
 }
 
-export function createCore({ store, clock, fingerprintSecret }: Ports) {
+function commenterView({ displayName, verified }: Commenter): CommenterView {
+  return { displayName, verified };
+}
+
+/** The address of a Page that also carries a magic link, for the Widget there to follow. */
+function magicLinkOf(page: Page, token: string): string {
+  const url = new URL(page.url);
+  url.hash = new URLSearchParams({ "fox-renard-magic-link": token }).toString();
+  return url.href;
+}
+
+export function createCore({
+  store,
+  clock,
+  email: emailSender,
+  fingerprintSecret,
+}: Ports) {
   async function allowedSite(
     request: SiteRequest,
   ): Promise<SiteRefusal | { outcome: "allowed"; site: Site }> {
@@ -391,13 +436,14 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       visitor ? await store.findVotes(page.id, visitor.id) : new Map(),
     );
     return {
-      commenter: commenter && { displayName: commenter.displayName },
+      commenter: commenter && commenterView(commenter),
       sort,
       comments: sorted(newestFirst, sort),
     };
   }
 
-  // A browser posts as one Commenter, whose display name is the latest it gave.
+  // A browser posts as one Commenter, whose display name is the latest it
+  // gave, to prefill its form; each Comment keeps its own.
   async function commenterFor(
     site: Site,
     visitor: Visitor,
@@ -487,18 +533,41 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       const { id } = await store.createComment({
         pageId: page.id,
         commenterId: commenter.id,
+        displayName,
         ...placed,
         createdAt,
       });
 
+      if (request.email !== null) {
+        const token = randomHex(32);
+        await store.createMagicLink({
+          siteId: site.id,
+          tokenHash: await sha256Hex(token),
+          email: request.email,
+          visitorId: visitor.id,
+          commenterId: commenter.id,
+          expiresAt: new Date(createdAt.getTime() + magicLinkLifetime),
+        });
+        await emailSender.send(
+          magicLinkEmail({
+            site,
+            page,
+            to: request.email,
+            displayName,
+            link: magicLinkOf(page, token),
+          }),
+        );
+      }
+
       return {
         outcome: "posted",
         browserToken,
-        commenter: { displayName },
+        commenter: commenterView(commenter),
         comment: commentView(
           {
             id,
             commenter,
+            displayName,
             ...placed,
             createdAt,
             voteCounts: { up: 0, down: 0 },
@@ -506,6 +575,40 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
           null,
         ),
         topLevelCommentId: placed.topLevelCommentId,
+      };
+    },
+
+    /**
+     * Follows a magic link: the Commenter who asked for it becomes verified,
+     * and the browser that follows it is linked to them.
+     */
+    async followMagicLink(request: MagicLinkRequest): Promise<MagicLinkResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      const { site } = allowed;
+
+      const link = await store.takeMagicLink(
+        site.id,
+        await sha256Hex(request.token),
+      );
+      if (!link) return { outcome: "magic-link-invalid" };
+
+      const { visitor, browserToken } =
+        (await recognize(site, request.browserToken)) ??
+        (await issueBrowserToken(site));
+      await store.verifyCommenter({
+        commenterId: link.commenterId,
+        email: link.email,
+        visitorId: visitor.id,
+        at: clock.now(),
+      });
+      const commenter = await store.findCommenter(visitor.id);
+      if (!commenter) return { outcome: "magic-link-invalid" };
+
+      return {
+        outcome: "followed",
+        browserToken,
+        commenter: commenterView(commenter),
       };
     },
 

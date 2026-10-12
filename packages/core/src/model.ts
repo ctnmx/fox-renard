@@ -13,6 +13,7 @@ export interface ReactionSet {
 
 export interface Site {
   id: string;
+  name: string;
   allowedDomains: string[];
   reactionSet: ReactionSet;
 }
@@ -41,6 +42,21 @@ export interface Reaction {
 export interface Commenter {
   id: string;
   displayName: string;
+  /** Whether a magic link verified their email on this Site. */
+  verified: boolean;
+}
+
+/** A magic link sent to an email, as stored until it is followed or expires. */
+export interface MagicLink {
+  siteId: string;
+  /** The SHA-256 of the link's token, which is never stored itself. */
+  tokenHash: string;
+  email: string;
+  /** The browser that asked for the link. */
+  visitorId: string;
+  /** The Commenter that browser posted as. */
+  commenterId: string;
+  expiresAt: Date;
 }
 
 export const voteDirections = ["up", "down"] as const;
@@ -54,7 +70,9 @@ export type VoteCounts = Record<Vote, number>;
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {
   id: string;
-  commenter: Commenter;
+  commenter: Pick<Commenter, "id" | "verified">;
+  /** The display name the Comment was posted under. */
+  displayName: string;
   /** The top-level Comment a Reply sits under, or `null` for a top-level Comment. */
   topLevelCommentId: string | null;
   text: string;

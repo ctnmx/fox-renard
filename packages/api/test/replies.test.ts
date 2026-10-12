@@ -31,7 +31,7 @@ describe("a Commenter Replies to a Comment", () => {
 
     const listedReply = {
       id: expect.any(String),
-      commenter: { displayName: "Paul", initials: "P" },
+      commenter: { displayName: "Paul", initials: "P", verified: false },
       body: [
         {
           type: "text",
@@ -74,11 +74,11 @@ describe("a Commenter Replies to a Comment", () => {
       topLevel?.replies.map(({ commenter, body }) => [commenter, body]),
     ).toEqual([
       [
-        { displayName: "Paul Martin", initials: "PM" },
+        { displayName: "Paul Martin", initials: "PM", verified: false },
         [{ type: "text", text: "Le Pas de l'Aiguille est-il équipé ?" }],
       ],
       [
-        { displayName: "Marie Dupont", initials: "MD" },
+        { displayName: "Marie Dupont", initials: "MD", verified: false },
         [{ type: "text", text: "@Paul Martin Oui, avec des câbles." }],
       ],
     ]);
@@ -150,7 +150,10 @@ describe("a Reply is refused and publishes nothing", () => {
         replies,
       })),
     ).toEqual([
-      { commenter: { displayName: "Marie", initials: "M" }, replies: [] },
+      {
+        commenter: { displayName: "Marie", initials: "M", verified: false },
+        replies: [],
+      },
     ]);
   });
 

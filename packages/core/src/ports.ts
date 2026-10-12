@@ -1,6 +1,7 @@
 import type {
   Comment,
   Commenter,
+  MagicLink,
   Page,
   Reaction,
   Site,
@@ -40,9 +41,23 @@ export interface Store {
     displayName: string;
   }): Promise<Commenter>;
   renameCommenter(commenterId: string, displayName: string): Promise<void>;
+  createMagicLink(link: MagicLink): Promise<void>;
+  /** Deletes a Site's magic link and returns it, so that it works once only. */
+  takeMagicLink(siteId: string, tokenHash: string): Promise<MagicLink | null>;
+  /**
+   * Verifies a Commenter's email. The browser that followed the magic link
+   * becomes their only browser, and their other magic links stop working.
+   */
+  verifyCommenter(verification: {
+    commenterId: string;
+    email: string;
+    visitorId: string;
+    at: Date;
+  }): Promise<void>;
   createComment(comment: {
     pageId: string;
     commenterId: string;
+    displayName: string;
     topLevelCommentId: string | null;
     text: string;
     createdAt: Date;
@@ -90,6 +105,8 @@ export interface Clock {
 
 export interface Email {
   to: string;
+  /** The name the email is sent under; the platform chooses the address. */
+  senderName: string;
   subject: string;
   text: string;
 }

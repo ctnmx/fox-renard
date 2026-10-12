@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   index,
@@ -8,6 +8,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -121,14 +122,26 @@ export const reactions = pgTable(
 );
 
 /** A Visitor who posted on a Site under a display name, on that Site only (ADR-0005). */
-export const commenters = pgTable("commenters", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  siteId: uuid("site_id")
-    .notNull()
-    .references(() => sites.id, { onDelete: "cascade" }),
-  displayName: text("display_name").notNull(),
-  createdAt: createdAt(),
-});
+export const commenters = pgTable(
+  "commenters",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    email: text("email"),
+    /** When a magic link verified `email`; null for a Guest. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  // One Verified Commenter per email and Site.
+  (table) => [
+    uniqueIndex()
+      .on(table.siteId, table.email)
+      .where(sql`${table.verifiedAt} is not null`),
+  ],
+);
 
 export const comments = pgTable(
   "comments",
@@ -140,6 +153,8 @@ export const comments = pgTable(
     commenterId: uuid("commenter_id")
       .notNull()
       .references(() => commenters.id, { onDelete: "cascade" }),
+    /** The display name the Comment was posted under. */
+    displayName: text("display_name").notNull(),
     /**
      * The top-level Comment a Reply sits under, or null for a top-level
      * Comment. A Comment with Replies leaves a placeholder rather than being
@@ -153,6 +168,32 @@ export const comments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [index().on(table.pageId, table.createdAt)],
+);
+
+/**
+ * A magic link sent to an email, until it is followed or expires. Erasing it
+ * then keeps no email that was never verified.
+ */
+export const magicLinks = pgTable(
+  "magic_links",
+  {
+    /** The SHA-256 of the link's token, which is never stored itself. */
+    tokenHash: text("token_hash").primaryKey(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    /** The browser that asked for the link. */
+    visitorId: uuid("visitor_id")
+      .notNull()
+      .references(() => visitors.id, { onDelete: "cascade" }),
+    /** The Commenter that browser posted as. */
+    commenterId: uuid("commenter_id")
+      .notNull()
+      .references(() => commenters.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index().on(table.commenterId), index().on(table.expiresAt)],
 );
 
 /** A Visitor's one Vote on a Comment or a Reply. */
