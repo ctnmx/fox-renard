@@ -157,6 +157,24 @@ describe("only a browser that followed a magic link acts as the Verified Comment
     ]);
   });
 
+  test("the browser that follows a link brings the Comments it posted as a Guest, even when another browser asked", async () => {
+    await api.loadWidget();
+    const phone = api.newBrowser();
+    await phone.post("Marie", "Posté depuis le téléphone.");
+    api.clock.advance(60_000);
+    await api.newBrowser().post("Marie", "Posté depuis le portable.", {
+      email: "marie@example.com",
+    });
+
+    await phone.followMagicLink(api.magicLinkTo("marie@example.com"));
+
+    expect(
+      (await api.loadWidget()).comments.map(
+        ({ commenter }) => commenter.verified,
+      ),
+    ).toEqual([true, true]);
+  });
+
   test("the browser that asked for a link it did not follow keeps nothing of the Verified Commenter", async () => {
     await api.loadWidget();
     const laptop = api.newBrowser();

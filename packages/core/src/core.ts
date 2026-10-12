@@ -659,24 +659,30 @@ export function createCore({
       const { visitor, browserToken } =
         (await recognize(site, request.browserToken)) ??
         (await issueBrowserToken(site));
+      // The browser that follows the link brings the Comments it posted as a
+      // Guest. Only the inbox's owner follows it, so no other browser's
+      // Comments ever move, even those of the browser that asked.
+      const followerCommenter = await store.findCommenter(visitor.id);
+      const linking = (commenterId: string) => ({
+        visitorId: visitor.id,
+        commenterId,
+        absorbedCommenterId:
+          followerCommenter &&
+          !followerCommenter.verified &&
+          followerCommenter.id !== commenterId
+            ? followerCommenter.id
+            : null,
+      });
       const verified = await store.findVerifiedCommenter(site.id, link.email);
       if (verified) {
-        // The browser that asked for the link brings the Comments it posted.
-        // Any other browser, which may not be theirs, brings nothing.
-        const asked = visitor.id === link.visitorId;
-        await store.linkBrowser({
-          visitorId: visitor.id,
-          commenterId: verified.id,
-          absorbedCommenterId:
-            asked && link.commenterId !== verified.id ? link.commenterId : null,
-        });
+        await store.linkBrowser(linking(verified.id));
       } else {
-        await store.verifyCommenter({
-          commenterId: link.commenterId,
+        const verifiedNow = await store.verifyCommenter({
+          ...linking(link.commenterId),
           email: link.email,
-          visitorId: visitor.id,
           at: clock.now(),
         });
+        if (!verifiedNow) return { outcome: "magic-link-invalid" };
       }
       const commenter = await store.findCommenter(visitor.id);
       if (!commenter) return { outcome: "magic-link-invalid" };

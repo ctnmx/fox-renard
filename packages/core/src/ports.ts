@@ -52,24 +52,19 @@ export interface Store {
     email: string,
   ): Promise<Commenter | null>;
   /**
-   * Verifies a Commenter's email. The browser that followed the magic link
-   * becomes their only browser, and their other magic links stop working.
+   * Verifies a Guest's email and links the browser that followed the magic
+   * link to them, as `linkBrowser` does. That browser becomes their only one,
+   * and their other magic links stop working. Changes nothing, and answers
+   * `false`, once the Commenter is no longer a Guest.
    */
-  verifyCommenter(verification: {
-    commenterId: string;
-    email: string;
-    visitorId: string;
-    at: Date;
-  }): Promise<void>;
+  verifyCommenter(
+    verification: BrowserLink & { email: string; at: Date },
+  ): Promise<boolean>;
   /**
-   * Links a browser to a Verified Commenter. The Comments of the Commenter it
-   * absorbs, if any, become theirs, and that Commenter is no more.
+   * Links a browser to a Verified Commenter. The Comments of the Guest it
+   * absorbs, if still a Guest, become theirs, and that Guest is no more.
    */
-  linkBrowser(link: {
-    visitorId: string;
-    commenterId: string;
-    absorbedCommenterId: string | null;
-  }): Promise<void>;
+  linkBrowser(link: BrowserLink): Promise<void>;
   createComment(comment: {
     pageId: string;
     commenterId: string;
@@ -101,6 +96,14 @@ export interface Store {
   }): Promise<{ byFingerprint: number; byVisitor: number }>;
   /** Erases the hits made at or before `cutoff`, fingerprints with them. */
   eraseRateLimitHits(cutoff: Date): Promise<void>;
+}
+
+/** A browser to link to a Commenter, with the Guest whose Comments it brings. */
+export interface BrowserLink {
+  visitorId: string;
+  commenterId: string;
+  /** The Guest the browser posted as, if it brings their Comments. */
+  absorbedCommenterId: string | null;
 }
 
 /** What abuse limits count apart, each against limits of its own. */

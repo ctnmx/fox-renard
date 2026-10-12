@@ -1,10 +1,11 @@
-import type { Page, Store, Vote } from "@fox-renard/core";
+import type { BrowserLink, Page, Store, Vote } from "@fox-renard/core";
 import {
   and,
   count,
   desc,
   eq,
   isNotNull,
+  isNull,
   lte,
   or,
   type SQL,
@@ -21,6 +22,36 @@ import {
   visitors,
   votes,
 } from "./schema";
+
+/** Links a browser to a Commenter, bringing the Comments of a Guest that is still one. */
+async function linkBrowser(
+  db: Database,
+  { visitorId, commenterId, absorbedCommenterId }: BrowserLink,
+): Promise<void> {
+  if (absorbedCommenterId) {
+    const [guest] = await db
+      .select({ id: commenters.id })
+      .from(commenters)
+      .where(
+        and(
+          eq(commenters.id, absorbedCommenterId),
+          isNull(commenters.verifiedAt),
+        ),
+      )
+      .for("update");
+    if (guest) {
+      await db
+        .update(comments)
+        .set({ commenterId })
+        .where(eq(comments.commenterId, guest.id));
+      await db.delete(commenters).where(eq(commenters.id, guest.id));
+    }
+  }
+  await db
+    .update(visitors)
+    .set({ commenterId })
+    .where(eq(visitors.id, visitorId));
+}
 
 export function createStore(db: Database): Store {
   const commenterColumns = {
@@ -259,42 +290,33 @@ export function createStore(db: Database): Store {
       await db.delete(magicLinks).where(lte(magicLinks.expiresAt, cutoff));
     },
 
-    async verifyCommenter({ commenterId, email, visitorId, at }) {
-      await db.transaction(async (tx) => {
-        await tx
+    async verifyCommenter({ email, at, ...link }) {
+      return db.transaction(async (tx) => {
+        // A magic link asked for before its Commenter was verified another
+        // way must not verify them again.
+        const [guest] = await tx
           .update(commenters)
           .set({ email, verifiedAt: at })
-          .where(eq(commenters.id, commenterId));
+          .where(
+            and(
+              eq(commenters.id, link.commenterId),
+              isNull(commenters.verifiedAt),
+            ),
+          )
+          .returning({ id: commenters.id });
+        if (!guest) return false;
         await tx
           .update(visitors)
           .set({ commenterId: null })
-          .where(eq(visitors.commenterId, commenterId));
-        await tx
-          .update(visitors)
-          .set({ commenterId })
-          .where(eq(visitors.id, visitorId));
-        await tx
-          .delete(magicLinks)
-          .where(eq(magicLinks.commenterId, commenterId));
+          .where(eq(visitors.commenterId, guest.id));
+        await tx.delete(magicLinks).where(eq(magicLinks.commenterId, guest.id));
+        await linkBrowser(tx, link);
+        return true;
       });
     },
 
-    async linkBrowser({ visitorId, commenterId, absorbedCommenterId }) {
-      await db.transaction(async (tx) => {
-        if (absorbedCommenterId) {
-          await tx
-            .update(comments)
-            .set({ commenterId })
-            .where(eq(comments.commenterId, absorbedCommenterId));
-          await tx
-            .delete(commenters)
-            .where(eq(commenters.id, absorbedCommenterId));
-        }
-        await tx
-          .update(visitors)
-          .set({ commenterId })
-          .where(eq(visitors.id, visitorId));
-      });
+    async linkBrowser(link) {
+      await db.transaction((tx) => linkBrowser(tx, link));
     },
 
     async createComment(comment) {
