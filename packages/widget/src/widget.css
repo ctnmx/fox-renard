@@ -154,6 +154,24 @@
   text-align: start;
 }
 
+.confirm-email {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #1d6f42;
+  border-radius: 8px;
+  text-align: start;
+}
+
+.confirm-email-prompt {
+  margin: 0;
+  font-size: 14px;
+}
+
 .comment-form + .notice {
   margin: 8px 0 0;
 }

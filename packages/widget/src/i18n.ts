@@ -10,6 +10,9 @@ const fr = {
   magicLinkSent: "Un lien de confirmation a été envoyé à {email}.",
   magicLinkNotSent:
     "Ton commentaire est publié, mais le lien de confirmation n'a pas pu être envoyé.",
+  confirmEmailPrompt:
+    "Confirme ton adresse email pour obtenir le badge vérifié sur ce navigateur.",
+  confirmEmail: "Confirmer mon adresse email",
   emailConfirmed: "Ton adresse email est confirmée.",
   magicLinkInvalid: "Ce lien de confirmation n'est plus valide.",
   magicLinkFailed:

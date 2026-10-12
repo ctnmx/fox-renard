@@ -20,30 +20,38 @@ export function Widget({
   const [data, setData] = useState<WidgetData>();
   // The order the Visitor chose, if any; the Widget data tells the default.
   const [sort, setSort] = useState<CommentSort | null>(null);
-  // The magic link is followed first, so that the data shows its badge.
-  const [following, setFollowing] = useState(magicLinkToken !== null);
+  // The magic link waits for the Visitor's click: a mail scanner that opens
+  // the page does not click, so it cannot spend the link.
+  const [pendingToken, setPendingToken] = useState(magicLinkToken);
+  const [confirming, setConfirming] = useState(false);
   const [verification, setVerification] = useState<MessageKey>();
+  // Counts the loads asked for, so that confirming loads the badge.
+  const [loads, setLoads] = useState(0);
   const { client, siteId, pageKey } = page;
 
-  useEffect(() => {
-    if (magicLinkToken === null) return;
-    followMagicLink({ client, siteId, pageKey }, magicLinkToken)
-      .then(
-        () => setVerification("emailConfirmed"),
-        (error) => {
-          console.error(error);
-          setVerification(
-            error instanceof Refused && error.code === "magic_link_invalid"
-              ? "magicLinkInvalid"
-              : "magicLinkFailed",
-          );
-        },
-      )
-      .finally(() => setFollowing(false));
-  }, [client, siteId, pageKey, magicLinkToken]);
+  async function confirm(token: string) {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await followMagicLink(page, token);
+      setVerification("emailConfirmed");
+      setPendingToken(null);
+      setLoads((loads) => loads + 1);
+    } catch (error) {
+      console.error(error);
+      // A link refused for good leaves; any other failure can be retried.
+      if (error instanceof Refused && error.code === "magic_link_invalid") {
+        setVerification("magicLinkInvalid");
+        setPendingToken(null);
+      } else {
+        setVerification("magicLinkFailed");
+      }
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   useEffect(() => {
-    if (following) return;
     // The order chosen last wins over one still loading.
     let latest = true;
     fetchWidgetData({ client, siteId, pageKey }, sort).then((data) => {
@@ -52,7 +60,7 @@ export function Widget({
     return () => {
       latest = false;
     };
-  }, [client, siteId, pageKey, sort, following]);
+  }, [client, siteId, pageKey, sort, loads]);
 
   if (!data) return null;
 
@@ -62,6 +70,19 @@ export function Widget({
         <p class="notice" role="status">
           {t(verification)}
         </p>
+      )}
+      {pendingToken !== null && (
+        <div class="confirm-email">
+          <p class="confirm-email-prompt">{t("confirmEmailPrompt")}</p>
+          <button
+            class="post"
+            type="button"
+            disabled={confirming}
+            onClick={() => confirm(pendingToken)}
+          >
+            {t("confirmEmail")}
+          </button>
+        </div>
       )}
       <ReactionSet
         page={page}

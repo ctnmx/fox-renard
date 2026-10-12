@@ -31,7 +31,7 @@ export function magicLinkEmail({
     text: [
       `Bonjour ${displayName},`,
       "",
-      `Tu as publié un commentaire sous le nom « ${displayName} » sur ${site.name}. Pour confirmer ton adresse email et obtenir le badge vérifié, ouvre ce lien dans le navigateur avec lequel tu veux gérer tes commentaires :`,
+      `Tu as publié un commentaire sous le nom « ${displayName} » sur ${site.name}. Pour confirmer ton adresse email et obtenir le badge vérifié, ouvre ce lien dans le navigateur avec lequel tu veux gérer tes commentaires, puis confirme :`,
       "",
       link,
       "",
