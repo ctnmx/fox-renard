@@ -28,10 +28,13 @@ export class ControllableClock implements Clock {
   }
 }
 
+/** Keeps every email it sends, until told to fail as an email service can. */
 export class EmailOutbox implements EmailSender {
   readonly sent: Email[] = [];
+  delivers = true;
 
   async send(email: Email): Promise<void> {
+    if (!this.delivers) throw new Error("The email service is unavailable.");
     this.sent.push(email);
   }
 }

@@ -163,11 +163,12 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           email: email ?? null,
         });
         if (result.outcome !== "posted") return refuse(c, result.outcome);
-        const { commenter, comment, topLevelCommentId } = result;
+        const { commenter, magicLinkSent, comment, topLevelCommentId } = result;
         return c.json(
           {
             browserToken: result.browserToken,
             commenter,
+            magicLinkSent,
             comment,
             topLevelCommentId,
           },

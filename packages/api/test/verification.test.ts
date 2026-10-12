@@ -18,10 +18,11 @@ describe("a Guest verifies their email by magic link", () => {
   test("giving an email with a Comment sends one magic link to the Page, as the Site via Fox Renard", async () => {
     await api.loadWidget();
 
-    await api
+    const posted = await api
       .newBrowser()
       .post("Marie", "Superbe boucle.", { email: "marie@example.com" });
 
+    expect(posted.magicLinkSent).toBe(true);
     expect(api.outbox.sent).toEqual([
       {
         to: "marie@example.com",
@@ -32,6 +33,18 @@ describe("a Guest verifies their email by magic link", () => {
         ),
       },
     ]);
+  });
+
+  test("the Comment is published even when its magic link cannot be sent, and the browser is told", async () => {
+    await api.loadWidget();
+    api.outbox.delivers = false;
+
+    const posted = await api
+      .newBrowser()
+      .post("Marie", "Superbe boucle.", { email: "marie@example.com" });
+
+    expect(posted.magicLinkSent).toBe(false);
+    expect((await api.loadWidget()).comments).toHaveLength(1);
   });
 
   test("no magic link is sent for a Page whose address is off the Site's Allowed Domains", async () => {

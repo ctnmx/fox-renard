@@ -160,6 +160,8 @@ export type CommentResult =
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
       commenter: CommenterView;
+      /** Whether the email the browser gave was sent a magic link. */
+      magicLinkSent: boolean;
       comment: CommentView;
       /** The top-level Comment a posted Reply sits under, or `null` for a top-level Comment. */
       topLevelCommentId: string | null;
@@ -477,6 +479,50 @@ export function createCore({
     return { ...commenter, displayName };
   }
 
+  /**
+   * Sends a Commenter a magic link to the Page they posted on, and tells
+   * whether it went out. The Comment stays published either way.
+   */
+  async function sendMagicLink({
+    site,
+    page,
+    visitor,
+    commenter,
+    displayName,
+    email,
+  }: {
+    site: Site;
+    page: Page;
+    visitor: Visitor;
+    commenter: Commenter;
+    displayName: string;
+    email: string;
+  }): Promise<boolean> {
+    const token = randomHex(32);
+    const link = magicLinkOf(site, page, token);
+    if (!link) return false;
+
+    // Addresses differing only in case reach one mailbox.
+    const to = email.toLowerCase();
+    await store.createMagicLink({
+      siteId: site.id,
+      tokenHash: await sha256Hex(token),
+      email: to,
+      visitorId: visitor.id,
+      commenterId: commenter.id,
+      expiresAt: new Date(clock.now().getTime() + magicLinkLifetime),
+    });
+    try {
+      await emailSender.send(
+        magicLinkEmail({ site, page, to, displayName, link }),
+      );
+      return true;
+    } catch (error) {
+      console.error("Fox Renard: a magic link could not be sent.", error);
+      return false;
+    }
+  }
+
   return {
     /** What a Widget shows on a Page; an unknown Page Key creates the Page. */
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
@@ -554,34 +600,23 @@ export function createCore({
 
       // A Verified Commenter's browser asks for no other email, so that
       // nobody using it can move them to an address of their own.
-      const token = randomHex(32);
-      const link = magicLinkOf(site, page, token);
-      if (request.email !== null && !commenter.verified && link) {
-        // Addresses differing only in case reach one mailbox.
-        const email = request.email.toLowerCase();
-        await store.createMagicLink({
-          siteId: site.id,
-          tokenHash: await sha256Hex(token),
-          email,
-          visitorId: visitor.id,
-          commenterId: commenter.id,
-          expiresAt: new Date(createdAt.getTime() + magicLinkLifetime),
-        });
-        await emailSender.send(
-          magicLinkEmail({
-            site,
-            page,
-            to: email,
-            displayName,
-            link,
-          }),
-        );
-      }
+      const magicLinkSent =
+        request.email !== null &&
+        !commenter.verified &&
+        (await sendMagicLink({
+          site,
+          page,
+          visitor,
+          commenter,
+          displayName,
+          email: request.email,
+        }));
 
       return {
         outcome: "posted",
         browserToken,
         commenter: commenterView(commenter),
+        magicLinkSent,
         comment: commentView(
           {
             id,

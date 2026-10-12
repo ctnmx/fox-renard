@@ -26,6 +26,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The proje
 | Core | `packages/core` | Every domain rule, in plain TypeScript behind ports. |
 | Database | `packages/db` | PostgreSQL schema, migrations and seed (Drizzle). |
 | HTTP API | `packages/api` | Public endpoints (Hono) and the typed client. |
+| Brevo | `packages/brevo` | The email adapter Fox Renard sends through in production. |
 | Widget | `packages/widget` | The `<fox-renard-widget>` custom element (Preact). |
 | Demo | `apps/demo` | A local route sheet embedding the Widget. |
 
