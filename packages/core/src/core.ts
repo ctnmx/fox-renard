@@ -539,11 +539,13 @@ export function createCore({
       });
 
       if (request.email !== null) {
+        // Addresses differing only in case reach one mailbox.
+        const email = request.email.toLowerCase();
         const token = randomHex(32);
         await store.createMagicLink({
           siteId: site.id,
           tokenHash: await sha256Hex(token),
-          email: request.email,
+          email,
           visitorId: visitor.id,
           commenterId: commenter.id,
           expiresAt: new Date(createdAt.getTime() + magicLinkLifetime),
@@ -552,7 +554,7 @@ export function createCore({
           magicLinkEmail({
             site,
             page,
-            to: request.email,
+            to: email,
             displayName,
             link: magicLinkOf(page, token),
           }),
@@ -579,8 +581,9 @@ export function createCore({
     },
 
     /**
-     * Follows a magic link: the Commenter who asked for it becomes verified,
-     * and the browser that follows it is linked to them.
+     * Follows a magic link, which links the browser that follows it to the
+     * Site's Verified Commenter with that email. When the Site has none yet,
+     * the Commenter who asked for the link becomes that Verified Commenter.
      */
     async followMagicLink(request: MagicLinkRequest): Promise<MagicLinkResult> {
       const allowed = await allowedSite(request);
@@ -591,17 +594,32 @@ export function createCore({
         site.id,
         await sha256Hex(request.token),
       );
-      if (!link) return { outcome: "magic-link-invalid" };
+      if (!link || link.expiresAt <= clock.now()) {
+        return { outcome: "magic-link-invalid" };
+      }
 
       const { visitor, browserToken } =
         (await recognize(site, request.browserToken)) ??
         (await issueBrowserToken(site));
-      await store.verifyCommenter({
-        commenterId: link.commenterId,
-        email: link.email,
-        visitorId: visitor.id,
-        at: clock.now(),
-      });
+      const verified = await store.findVerifiedCommenter(site.id, link.email);
+      if (verified) {
+        // The browser that asked for the link brings the Comments it posted.
+        // Any other browser, which may not be theirs, brings nothing.
+        const asked = visitor.id === link.visitorId;
+        await store.linkBrowser({
+          visitorId: visitor.id,
+          commenterId: verified.id,
+          absorbedCommenterId:
+            asked && link.commenterId !== verified.id ? link.commenterId : null,
+        });
+      } else {
+        await store.verifyCommenter({
+          commenterId: link.commenterId,
+          email: link.email,
+          visitorId: visitor.id,
+          at: clock.now(),
+        });
+      }
       const commenter = await store.findCommenter(visitor.id);
       if (!commenter) return { outcome: "magic-link-invalid" };
 

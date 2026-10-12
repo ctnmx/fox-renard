@@ -238,6 +238,20 @@ export function createStore(db: Database): Store {
       return link ?? null;
     },
 
+    async findVerifiedCommenter(siteId, email) {
+      const [commenter] = await db
+        .select(commenterColumns)
+        .from(commenters)
+        .where(
+          and(
+            eq(commenters.siteId, siteId),
+            eq(commenters.email, email),
+            isNotNull(commenters.verifiedAt),
+          ),
+        );
+      return commenter ?? null;
+    },
+
     async verifyCommenter({ commenterId, email, visitorId, at }) {
       await db.transaction(async (tx) => {
         await tx
@@ -255,6 +269,24 @@ export function createStore(db: Database): Store {
         await tx
           .delete(magicLinks)
           .where(eq(magicLinks.commenterId, commenterId));
+      });
+    },
+
+    async linkBrowser({ visitorId, commenterId, absorbedCommenterId }) {
+      await db.transaction(async (tx) => {
+        if (absorbedCommenterId) {
+          await tx
+            .update(comments)
+            .set({ commenterId })
+            .where(eq(comments.commenterId, absorbedCommenterId));
+          await tx
+            .delete(commenters)
+            .where(eq(commenters.id, absorbedCommenterId));
+        }
+        await tx
+          .update(visitors)
+          .set({ commenterId })
+          .where(eq(visitors.id, visitorId));
       });
     },
 

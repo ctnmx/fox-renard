@@ -44,6 +44,11 @@ export interface Store {
   createMagicLink(link: MagicLink): Promise<void>;
   /** Deletes a Site's magic link and returns it, so that it works once only. */
   takeMagicLink(siteId: string, tokenHash: string): Promise<MagicLink | null>;
+  /** The Verified Commenter of a Site whose email this is. */
+  findVerifiedCommenter(
+    siteId: string,
+    email: string,
+  ): Promise<Commenter | null>;
   /**
    * Verifies a Commenter's email. The browser that followed the magic link
    * becomes their only browser, and their other magic links stop working.
@@ -53,6 +58,15 @@ export interface Store {
     email: string;
     visitorId: string;
     at: Date;
+  }): Promise<void>;
+  /**
+   * Links a browser to a Verified Commenter. The Comments of the Commenter it
+   * absorbs, if any, become theirs, and that Commenter is no more.
+   */
+  linkBrowser(link: {
+    visitorId: string;
+    commenterId: string;
+    absorbedCommenterId: string | null;
   }): Promise<void>;
   createComment(comment: {
     pageId: string;
