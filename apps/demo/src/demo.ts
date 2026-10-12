@@ -23,10 +23,11 @@ export async function startDemo(): Promise<void> {
   const db = await createPgliteDatabase();
   await seed(db, { memberEmail: "membre@example.com" });
 
+  const outbox = new EmailOutbox();
   const core = createCore({
     store: createStore(db),
     clock: { now: () => new Date() },
-    email: new EmailOutbox(),
+    email: outbox,
     photos: new InMemoryPhotoStore(),
     botCheck: new StubBotCheck(),
     fingerprintSecret: new FixedFingerprintSecret(),
@@ -48,6 +49,8 @@ export async function startDemo(): Promise<void> {
         "Content-Type": "text/javascript; charset=utf-8",
       }),
     )
+    // The emails Fox Renard sent, so that Seam 2 can follow a magic link.
+    .get("/outbox", (c) => c.json(outbox.sent))
     .route("/", createApp(core, { getConnInfo }));
 
   const siteFolder = new URL("../site/", import.meta.url);

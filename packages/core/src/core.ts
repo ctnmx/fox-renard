@@ -304,6 +304,12 @@ function commenterView({ displayName, verified }: Commenter): CommenterView {
 }
 
 /**
+ * The fragment parameter that carries a magic link's token to the Widget. A
+ * fragment never reaches the Site's server, nor other sites as a referrer.
+ */
+export const magicLinkParameter = "fox-renard-magic-link";
+
+/**
  * The address of a Page that also carries a magic link, for the Widget there
  * to follow; `null` when the Page's address is off the Site's Allowed
  * Domains, as a request that forged its Origin can make it.
@@ -311,7 +317,7 @@ function commenterView({ displayName, verified }: Commenter): CommenterView {
 function magicLinkOf(site: Site, page: Page, token: string): string | null {
   const url = new URL(page.url);
   if (!site.allowedDomains.includes(url.hostname)) return null;
-  url.hash = new URLSearchParams({ "fox-renard-magic-link": token }).toString();
+  url.hash = new URLSearchParams({ [magicLinkParameter]: token }).toString();
   return url.href;
 }
 

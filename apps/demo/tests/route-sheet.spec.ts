@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { expect, type Page, test } from "@playwright/test";
+import {
+  type APIRequestContext,
+  expect,
+  type Page,
+  test,
+} from "@playwright/test";
 import { apiOrigin, siteOrigin } from "../src/addresses";
 
 const prompt = "Alors, cet itinéraire ?";
@@ -8,6 +13,17 @@ async function scrollToWidget(page: Page) {
   const widget = page.locator("fox-renard-widget");
   await widget.scrollIntoViewIfNeeded();
   return widget;
+}
+
+/** The magic link in the latest email the demo's outbox sent to `address`. */
+async function magicLinkTo(request: APIRequestContext, address: string) {
+  const outbox = await request.get(`${apiOrigin}/outbox`);
+  const sent: { to: string; text: string }[] = await outbox.json();
+  const link = sent
+    .findLast(({ to }) => to === address)
+    ?.text.match(/https?:\/\/\S+#fox-renard-magic-link=\S+/);
+  if (!link) throw new Error(`No magic link was sent to ${address}`);
+  return link[0];
 }
 
 test.describe("the Widget on a route sheet", () => {
@@ -383,5 +399,51 @@ test.describe("Votes and sorting on a route sheet", () => {
 
     await sort.selectOption({ label: "Top" });
     await expect(widget.getByRole("article")).toHaveText(order);
+  });
+});
+
+test.describe("Email verification on a route sheet", () => {
+  test("a Guest posts with their email, opens the magic link from the outbox, and sees the verified badge", async ({
+    page,
+    request,
+  }) => {
+    // A route sheet and an address of their own, as tests share the demo.
+    await page.goto(`/article/essai-${randomUUID()}`);
+    const email = `marie-${randomUUID()}@example.com`;
+    let widget = await scrollToWidget(page);
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie Dupont");
+    await widget
+      .getByRole("textbox", { name: "Ton email (facultatif)" })
+      .fill(email);
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Superbe boucle, faite en juin.");
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    await expect(widget.getByRole("status")).toHaveText(
+      `Un lien de confirmation a été envoyé à ${email}.`,
+    );
+    const badge = () =>
+      widget.getByRole("article").getByRole("img", { name: "Email vérifié" });
+    await expect(widget.getByRole("article")).toHaveCount(1);
+    await expect(badge()).toHaveCount(0);
+
+    // The email opens the link in a new tab of the same browser.
+    const opened = await page.context().newPage();
+    await opened.goto(await magicLinkTo(request, email));
+    widget = opened.locator("fox-renard-widget");
+
+    // The Widget loads and comes into view without the Visitor scrolling.
+    await expect(widget.getByRole("status")).toHaveText(
+      "Ton adresse email est confirmée.",
+    );
+    await expect(widget).toBeInViewport();
+    await expect(badge()).toBeVisible();
+    // The token leaves the address bar, so it is neither reused nor shared.
+    expect(opened.url()).not.toContain("fox-renard-magic-link");
+    // A Verified Commenter is asked for no email.
+    await expect(
+      widget.getByRole("textbox", { name: "Ton email (facultatif)" }),
+    ).toHaveCount(0);
   });
 });
