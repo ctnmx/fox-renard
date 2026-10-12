@@ -1,5 +1,5 @@
 // Every email Fox Renard sends, in French only in V1, like the Widget.
-import type { Page, Site } from "./model";
+import type { Site } from "./model";
 import type { Email } from "./ports";
 
 /** A Site's emails go out under its own name. */
@@ -9,18 +9,17 @@ function senderNameOf(site: Site): string {
 
 /**
  * The email that sends a Commenter their magic link. It names the Comment's
- * display name and Page, so that someone who never posted it can tell, and
- * ignore it.
+ * display name, so that someone who never posted it can tell, and ignore it.
+ * It shows no Page title: a request that forged its Origin can set one, and
+ * would then write to a stranger under the Site's name.
  */
 export function magicLinkEmail({
   site,
-  page,
   to,
   displayName,
   link,
 }: {
   site: Site;
-  page: Page;
   to: string;
   displayName: string;
   link: string;
@@ -32,7 +31,7 @@ export function magicLinkEmail({
     text: [
       `Bonjour ${displayName},`,
       "",
-      `Tu as publié un commentaire sous le nom « ${displayName} » sur « ${page.title} ». Pour confirmer ton adresse email et obtenir le badge vérifié, ouvre ce lien dans le navigateur avec lequel tu veux gérer tes commentaires :`,
+      `Tu as publié un commentaire sous le nom « ${displayName} » sur ${site.name}. Pour confirmer ton adresse email et obtenir le badge vérifié, ouvre ce lien dans le navigateur avec lequel tu veux gérer tes commentaires :`,
       "",
       link,
       "",

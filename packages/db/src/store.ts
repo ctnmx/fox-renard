@@ -4,6 +4,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   isNotNull,
   isNull,
   lte,
@@ -284,6 +285,20 @@ export function createStore(db: Database): Store {
           ),
         );
       return commenter ?? null;
+    },
+
+    async countMagicLinks(siteId, email, at) {
+      const [working] = await db
+        .select({ count: count() })
+        .from(magicLinks)
+        .where(
+          and(
+            eq(magicLinks.siteId, siteId),
+            eq(magicLinks.email, email),
+            gt(magicLinks.expiresAt, at),
+          ),
+        );
+      return working?.count ?? 0;
     },
 
     async eraseMagicLinks(cutoff) {

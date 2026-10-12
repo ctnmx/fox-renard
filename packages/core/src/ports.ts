@@ -44,6 +44,8 @@ export interface Store {
   createMagicLink(link: MagicLink): Promise<void>;
   /** Deletes a Site's magic link and returns it, so that it works once only. */
   takeMagicLink(siteId: string, tokenHash: string): Promise<MagicLink | null>;
+  /** How many of a Site's magic links to `email` still work at `at`. */
+  countMagicLinks(siteId: string, email: string, at: Date): Promise<number>;
   /** Erases the magic links that expired at or before `cutoff`, emails with them. */
   eraseMagicLinks(cutoff: Date): Promise<void>;
   /** The Verified Commenter of a Site whose email this is. */

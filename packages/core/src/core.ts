@@ -194,6 +194,12 @@ const hour = 60 * 60 * 1000;
 const magicLinkLifetime = 1 * hour;
 
 /**
+ * How many magic links that still work an address may wait on per Site, so
+ * that nobody can flood a stranger's inbox under the Site's name.
+ */
+const maxWorkingMagicLinks = 3;
+
+/**
  * How long abuse limits remember a fingerprint or a browser. Erasing every
  * hour then keeps nothing past 24 hours (ADR-0006).
  */
@@ -510,6 +516,8 @@ export function createCore({
 
     // Addresses differing only in case reach one mailbox.
     const to = email.toLowerCase();
+    const working = await store.countMagicLinks(site.id, to, clock.now());
+    if (working >= maxWorkingMagicLinks) return false;
     await store.createMagicLink({
       siteId: site.id,
       tokenHash: await sha256Hex(token),
@@ -519,9 +527,7 @@ export function createCore({
       expiresAt: new Date(clock.now().getTime() + magicLinkLifetime),
     });
     try {
-      await emailSender.send(
-        magicLinkEmail({ site, page, to, displayName, link }),
-      );
+      await emailSender.send(magicLinkEmail({ site, to, displayName, link }));
       return true;
     } catch (error) {
       console.error("Fox Renard: a magic link could not be sent.", error);

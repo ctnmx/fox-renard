@@ -1,5 +1,5 @@
 {
-  "id": "2edf255a-d93c-4509-a87d-aecf834547c3",
+  "id": "1a592a5b-3b02-4723-8392-0a81c5937447",
   "prevId": "7929bff0-e0a7-4506-a63e-35a2f385694d",
   "version": "7",
   "dialect": "postgresql",
@@ -299,6 +299,27 @@
         }
       },
       "indexes": {
+        "magic_links_site_id_email_index": {
+          "name": "magic_links_site_id_email_index",
+          "columns": [
+            {
+              "expression": "site_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "magic_links_commenter_id_index": {
           "name": "magic_links_commenter_id_index",
           "columns": [

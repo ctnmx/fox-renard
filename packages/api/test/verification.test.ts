@@ -49,6 +49,44 @@ describe("a Guest verifies their email by magic link", () => {
     expect((await api.loadWidget()).comments).toHaveLength(1);
   });
 
+  test("an address is sent at most 3 magic links that still work, so nobody can flood it", async () => {
+    await api.loadWidget();
+    const sent = [];
+    for (const text of ["Un.", "Deux.", "Trois.", "Quatre."]) {
+      const posted = await api
+        .newBrowser()
+        .post("Marie", text, { email: "marie@example.com" });
+      sent.push(posted.magicLinkSent);
+    }
+
+    expect(sent).toEqual([true, true, true, false]);
+    expect(api.outbox.sent).toHaveLength(3);
+    api.clock.advance(hour);
+    const later = await api
+      .newBrowser()
+      .post("Marie", "Cinq.", { email: "marie@example.com" });
+    expect(later.magicLinkSent).toBe(true);
+  });
+
+  test("the email names the Site, never a Page title, which a request that forged its Origin can set", async () => {
+    const trap = {
+      ...routeSheet,
+      pageKey: "article-titre-piege",
+      url: "https://www.rectoverso.co/article/titre-piege",
+      title: "Gagne un vélo sur piege.example",
+    };
+    await api.loadWidget({ page: trap });
+
+    await api.newBrowser().post("Marie", "Superbe boucle.", {
+      page: trap,
+      email: "marie@example.com",
+    });
+
+    const [email] = api.outbox.sent;
+    expect(email?.text).toContain("sur Recto Verso");
+    expect(email?.text).not.toContain("piege.example");
+  });
+
   test("no magic link is sent for a Page whose address is off the Site's Allowed Domains", async () => {
     // A request that forged its Origin can report any address for a Page.
     const trap = {

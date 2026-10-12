@@ -196,7 +196,11 @@ export const magicLinks = pgTable(
       .references(() => commenters.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
-  (table) => [index().on(table.commenterId), index().on(table.expiresAt)],
+  (table) => [
+    index().on(table.siteId, table.email),
+    index().on(table.commenterId),
+    index().on(table.expiresAt),
+  ],
 );
 
 /** A Visitor's one Vote on a Comment or a Reply. */
