@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  boolean,
   index,
   integer,
   pgTable,
@@ -115,6 +116,8 @@ export const reactions = pgTable(
     optionId: uuid("option_id")
       .notNull()
       .references(() => reactionOptions.id, { onDelete: "cascade" }),
+    /** Cast from a browser linked to a Verified Commenter. */
+    verified: boolean("verified").notNull().default(false),
     createdAt: createdAt(),
   },
   // One Reaction per Visitor and Page.
@@ -207,6 +210,8 @@ export const votes = pgTable(
       .notNull()
       .references(() => visitors.id, { onDelete: "cascade" }),
     direction: text("direction", { enum: ["up", "down"] }).notNull(),
+    /** Cast from a browser linked to a Verified Commenter. */
+    verified: boolean("verified").notNull().default(false),
     createdAt: createdAt(),
   },
   // One Vote per Visitor and Comment.

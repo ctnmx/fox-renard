@@ -12,6 +12,8 @@ ALTER TABLE "commenters" ADD COLUMN "verified_at" timestamp with time zone;--> s
 ALTER TABLE "comments" ADD COLUMN "display_name" text;--> statement-breakpoint
 UPDATE "comments" SET "display_name" = "commenters"."display_name" FROM "commenters" WHERE "commenters"."id" = "comments"."commenter_id";--> statement-breakpoint
 ALTER TABLE "comments" ALTER COLUMN "display_name" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "reactions" ADD COLUMN "verified" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "votes" ADD COLUMN "verified" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "magic_links" ADD CONSTRAINT "magic_links_site_id_sites_id_fk" FOREIGN KEY ("site_id") REFERENCES "public"."sites"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "magic_links" ADD CONSTRAINT "magic_links_visitor_id_visitors_id_fk" FOREIGN KEY ("visitor_id") REFERENCES "public"."visitors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "magic_links" ADD CONSTRAINT "magic_links_commenter_id_commenters_id_fk" FOREIGN KEY ("commenter_id") REFERENCES "public"."commenters"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

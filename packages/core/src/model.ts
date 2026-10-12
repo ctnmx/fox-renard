@@ -36,6 +36,8 @@ export interface Visitor {
 /** A Visitor's choice of one Reaction Option on a Page. */
 export interface Reaction {
   optionId: string;
+  /** Whether it was cast from a browser linked to a Verified Commenter. */
+  verified: boolean;
 }
 
 /** A Visitor who posted on a Site under a display name, on that Site only (ADR-0005). */
@@ -63,6 +65,13 @@ export const voteDirections = ["up", "down"] as const;
 
 /** A Visitor's thumbs-up or thumbs-down on a Comment. */
 export type Vote = (typeof voteDirections)[number];
+
+/** A Visitor's Vote on a Comment, as stored. */
+export interface CastVote {
+  vote: Vote;
+  /** Whether it was cast from a browser linked to a Verified Commenter. */
+  verified: boolean;
+}
 
 /** How many Visitors hold each Vote on a Comment. */
 export type VoteCounts = Record<Vote, number>;

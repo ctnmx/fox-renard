@@ -2,6 +2,7 @@ import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
 import { magicLinkEmail } from "./emails";
 import type {
+  CastVote,
   Comment,
   Commenter,
   Page,
@@ -144,7 +145,10 @@ export type VoteResult =
       outcome: "voted";
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
-    } & Pick<CommentView, "voteCounts" | "vote">)
+    } & Pick<CommentView, "voteCounts" | "vote"> & {
+        /** Whether the browser's Vote counts as verified, as stored. */
+        verified: boolean;
+      })
   | SiteRefusal
   | { outcome: "page-not-found" }
   | { outcome: "comment-not-found" }
@@ -221,10 +225,10 @@ function shorten(text: string, maxLength: number): string {
  */
 function topLevelCommentViews(
   comments: Comment[],
-  votes: Map<string, Vote>,
+  votes: Map<string, CastVote>,
 ): TopLevelCommentView[] {
   const viewOf = (comment: Comment) =>
-    commentView(comment, votes.get(comment.id) ?? null);
+    commentView(comment, votes.get(comment.id)?.vote ?? null);
   const replies = new Map<string, CommentView[]>();
   for (const comment of comments.toReversed()) {
     const { topLevelCommentId } = comment;
@@ -297,9 +301,14 @@ function commenterView({ displayName, verified }: Commenter): CommenterView {
   return { displayName, verified };
 }
 
-/** The address of a Page that also carries a magic link, for the Widget there to follow. */
-function magicLinkOf(page: Page, token: string): string {
+/**
+ * The address of a Page that also carries a magic link, for the Widget there
+ * to follow; `null` when the Page's address is off the Site's Allowed
+ * Domains, as a request that forged its Origin can make it.
+ */
+function magicLinkOf(site: Site, page: Page, token: string): string | null {
   const url = new URL(page.url);
+  if (!site.allowedDomains.includes(url.hostname)) return null;
   url.hash = new URLSearchParams({ "fox-renard-magic-link": token }).toString();
   return url.href;
 }
@@ -402,6 +411,11 @@ export function createCore({
       at: clock.now(),
     });
     return admitted;
+  }
+
+  /** Whether what a browser casts counts as verified: it does once the browser is linked to a Verified Commenter. */
+  async function castsVerified(visitor: Visitor): Promise<boolean> {
+    return (await store.findCommenter(visitor.id))?.verified ?? false;
   }
 
   async function reactionsView(
@@ -538,10 +552,13 @@ export function createCore({
         createdAt,
       });
 
-      if (request.email !== null) {
+      // A Verified Commenter's browser asks for no other email, so that
+      // nobody using it can move them to an address of their own.
+      const token = randomHex(32);
+      const link = magicLinkOf(site, page, token);
+      if (request.email !== null && !commenter.verified && link) {
         // Addresses differing only in case reach one mailbox.
         const email = request.email.toLowerCase();
-        const token = randomHex(32);
         await store.createMagicLink({
           siteId: site.id,
           tokenHash: await sha256Hex(token),
@@ -556,7 +573,7 @@ export function createCore({
             page,
             to: email,
             displayName,
-            link: magicLinkOf(page, token),
+            link,
           }),
         );
       }
@@ -644,16 +661,22 @@ export function createCore({
       const admitted = await admit(site, "vote", request);
       if (!admitted) return { outcome: "rate-limited" };
       const { visitor, browserToken } = admitted;
-      await store.setVote(comment.id, visitor.id, request.vote);
+      await store.setVote(
+        comment.id,
+        visitor.id,
+        request.vote,
+        await castsVerified(visitor),
+      );
 
       const voted = await store.findComment(page.id, comment.id);
       if (!voted) return { outcome: "comment-not-found" };
-      const votes = await store.findVotes(page.id, visitor.id);
+      const cast = (await store.findVotes(page.id, visitor.id)).get(comment.id);
       return {
         outcome: "voted",
         browserToken,
         voteCounts: voted.voteCounts,
-        vote: votes.get(comment.id) ?? null,
+        vote: cast?.vote ?? null,
+        verified: cast?.verified ?? false,
       };
     },
 
@@ -680,7 +703,12 @@ export function createCore({
       const admitted = await admit(site, "reaction", request);
       if (!admitted) return { outcome: "rate-limited" };
       const { visitor, browserToken } = admitted;
-      await store.setReaction(page.id, visitor.id, optionId);
+      await store.setReaction(
+        page.id,
+        visitor.id,
+        optionId,
+        await castsVerified(visitor),
+      );
 
       return {
         outcome: "reacted",
@@ -690,11 +718,15 @@ export function createCore({
     },
 
     /**
-     * Erases what abuse limits no longer remember, fingerprints included.
-     * The platform runs it every hour, since reacting and voting erase only
-     * when someone reacts or votes (ADR-0006).
+     * Erases what abuse limits no longer remember, fingerprints included,
+     * and expired magic links, with the emails nobody verified. The platform
+     * runs it every hour, since reacting and voting erase only when someone
+     * reacts or votes (ADR-0006).
      */
-    eraseExpiredFingerprints,
+    async eraseExpired(): Promise<void> {
+      await eraseExpiredFingerprints();
+      await store.eraseMagicLinks(clock.now());
+    },
   };
 }
 

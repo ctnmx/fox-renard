@@ -155,7 +155,10 @@ export function createStore(db: Database): Store {
         .groupBy(reactions.optionId);
       const [reaction] = visitorId
         ? await db
-            .select({ optionId: reactions.optionId })
+            .select({
+              optionId: reactions.optionId,
+              verified: reactions.verified,
+            })
             .from(reactions)
             .where(
               and(
@@ -170,7 +173,7 @@ export function createStore(db: Database): Store {
       };
     },
 
-    async setReaction(pageId, visitorId, optionId) {
+    async setReaction(pageId, visitorId, optionId, verified) {
       const ofVisitorOnPage = and(
         eq(reactions.pageId, pageId),
         eq(reactions.visitorId, visitorId),
@@ -183,10 +186,10 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(reactions)
-        .values({ pageId, visitorId, optionId })
+        .values({ pageId, visitorId, optionId, verified })
         .onConflictDoUpdate({
           target: [reactions.pageId, reactions.visitorId],
-          set: { optionId },
+          set: { optionId, verified },
         });
     },
 
@@ -252,6 +255,10 @@ export function createStore(db: Database): Store {
       return commenter ?? null;
     },
 
+    async eraseMagicLinks(cutoff) {
+      await db.delete(magicLinks).where(lte(magicLinks.expiresAt, cutoff));
+    },
+
     async verifyCommenter({ commenterId, email, visitorId, at }) {
       await db.transaction(async (tx) => {
         await tx
@@ -314,16 +321,22 @@ export function createStore(db: Database): Store {
 
     async findVotes(pageId, visitorId) {
       const held = await db
-        .select({ commentId: votes.commentId, vote: votes.direction })
+        .select({
+          commentId: votes.commentId,
+          vote: votes.direction,
+          verified: votes.verified,
+        })
         .from(votes)
         .innerJoin(comments, eq(comments.id, votes.commentId))
         .where(
           and(eq(comments.pageId, pageId), eq(votes.visitorId, visitorId)),
         );
-      return new Map(held.map(({ commentId, vote }) => [commentId, vote]));
+      return new Map(
+        held.map(({ commentId, ...cast }) => [commentId, cast] as const),
+      );
     },
 
-    async setVote(commentId, visitorId, vote) {
+    async setVote(commentId, visitorId, vote, verified) {
       const ofVisitorOnComment = and(
         eq(votes.commentId, commentId),
         eq(votes.visitorId, visitorId),
@@ -336,10 +349,10 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(votes)
-        .values({ commentId, visitorId, direction: vote })
+        .values({ commentId, visitorId, direction: vote, verified })
         .onConflictDoUpdate({
           target: [votes.commentId, votes.visitorId],
-          set: { direction: vote },
+          set: { direction: vote, verified },
         });
     },
 

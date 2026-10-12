@@ -1,4 +1,5 @@
 import type {
+  CastVote,
   Comment,
   Commenter,
   MagicLink,
@@ -31,6 +32,7 @@ export interface Store {
     pageId: string,
     visitorId: string,
     optionId: string | null,
+    verified: boolean,
   ): Promise<void>;
   /** The Commenter a Visitor's browser posts as, once it has posted. */
   findCommenter(visitorId: string): Promise<Commenter | null>;
@@ -44,6 +46,8 @@ export interface Store {
   createMagicLink(link: MagicLink): Promise<void>;
   /** Deletes a Site's magic link and returns it, so that it works once only. */
   takeMagicLink(siteId: string, tokenHash: string): Promise<MagicLink | null>;
+  /** Erases the magic links that expired at or before `cutoff`, emails with them. */
+  eraseMagicLinks(cutoff: Date): Promise<void>;
   /** The Verified Commenter of a Site whose email this is. */
   findVerifiedCommenter(
     siteId: string,
@@ -81,12 +85,13 @@ export interface Store {
   /** A Page's Comments and Replies, newest first. */
   listComments(pageId: string): Promise<Comment[]>;
   /** The Votes a Visitor holds on a Page's Comments and Replies, by Comment id. */
-  findVotes(pageId: string, visitorId: string): Promise<Map<string, Vote>>;
+  findVotes(pageId: string, visitorId: string): Promise<Map<string, CastVote>>;
   /** Sets a Visitor's one Vote on a Comment; `null` withdraws it. */
   setVote(
     commentId: string,
     visitorId: string,
     vote: Vote | null,
+    verified: boolean,
   ): Promise<void>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;

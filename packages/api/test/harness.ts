@@ -14,7 +14,11 @@ import {
   seed,
   seedSite,
 } from "@fox-renard/db";
-import { createPgliteDatabase, emptyDatabase } from "@fox-renard/db/pglite";
+import {
+  createPgliteDatabase,
+  databaseHolds,
+  emptyDatabase,
+} from "@fox-renard/db/pglite";
 import { testClient } from "hono/testing";
 import { createApp } from "../src";
 
@@ -110,21 +114,19 @@ export async function startTestApi() {
   const botCheck = new StubBotCheck();
   const fingerprintSecret = new FixedFingerprintSecret();
 
-  const app = createApp(
-    createCore({
-      store: createStore(db),
-      clock,
-      email: outbox,
-      photos,
-      botCheck,
-      fingerprintSecret,
+  const core = createCore({
+    store: createStore(db),
+    clock,
+    email: outbox,
+    photos,
+    botCheck,
+    fingerprintSecret,
+  });
+  const app = createApp(core, {
+    getConnInfo: (c) => ({
+      remote: { address: c.req.header(clientIpHeader) },
     }),
-    {
-      getConnInfo: (c) => ({
-        remote: { address: c.req.header(clientIpHeader) },
-      }),
-    },
-  );
+  });
 
   const client = testClient(app);
 
@@ -404,6 +406,13 @@ export async function startTestApi() {
 
   return {
     client,
+    /** Runs the erasure the platform schedules every hour, as Cloudflare does in production. */
+    runHourlyErasure: () => core.eraseExpired(),
+    /**
+     * Whether any column of any table holds `text`. It names no table, so
+     * proving that something is gone survives changes to the schema.
+     */
+    databaseHolds: (text: string) => databaseHolds(db, text),
     loadWidget,
     putReaction,
     postComment,

@@ -223,6 +223,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
             browserToken: result.browserToken,
             voteCounts: result.voteCounts,
             vote: result.vote,
+            verified: result.verified,
           },
           200,
         );

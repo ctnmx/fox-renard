@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import {
   anotherSite,
+  optionId,
   routeSheet,
   startTestApi,
   type TestApi,
@@ -31,6 +32,23 @@ describe("a Guest verifies their email by magic link", () => {
         ),
       },
     ]);
+  });
+
+  test("no magic link is sent for a Page whose address is off the Site's Allowed Domains", async () => {
+    // A request that forged its Origin can report any address for a Page.
+    const trap = {
+      ...routeSheet,
+      pageKey: "article-piege",
+      url: "https://piege.example/article",
+    };
+    await api.loadWidget({ page: trap });
+
+    await api.newBrowser().post("Marie", "Superbe boucle.", {
+      page: trap,
+      email: "marie@example.com",
+    });
+
+    expect(api.outbox.sent).toEqual([]);
   });
 
   test("following the link makes the Commenter verified, with the badge on all their Comments", async () => {
@@ -185,6 +203,17 @@ describe("a Verified Commenter links another browser", () => {
     });
   });
 
+  test("a browser linked to a Verified Commenter is sent no magic link, so nobody using it can move them to another email", async () => {
+    await api.loadWidget();
+    const laptop = await verifiedMarie();
+
+    await laptop.post("Paul", "Depuis l'ordinateur de Marie.", {
+      email: "paul@example.com",
+    });
+
+    expect(api.outbox.sent.map(({ to }) => to)).toEqual(["marie@example.com"]);
+  });
+
   test("following a link someone else asked for with your email leaves their Comments theirs", async () => {
     await api.loadWidget();
     const laptop = await verifiedMarie();
@@ -259,5 +288,55 @@ describe("a Commenter exists within one Site only (ADR-0005)", () => {
     });
 
     expect(elsewhere.status).toBe(410);
+  });
+});
+
+describe("a Verified Commenter's Reactions and Votes count as verified", () => {
+  test("Reactions and Votes from a browser linked to a Verified Commenter are stored as verified", async () => {
+    await api.loadWidget();
+    const { comment } = await api.newBrowser().post("Paul", "Faite en mai.");
+    const marie = api.newBrowser();
+    await marie.post("Marie", "Superbe boucle.", {
+      email: "marie@example.com",
+    });
+    expect((await marie.react("Je le prépare")).reaction).toEqual({
+      optionId: optionId("Je le prépare"),
+      verified: false,
+    });
+    expect(await marie.vote(comment.id, "up")).toMatchObject({
+      vote: "up",
+      verified: false,
+    });
+
+    await marie.followMagicLink(api.magicLinkTo("marie@example.com"));
+    const reacted = await marie.react("Je l'ai fait !");
+    const voted = await marie.vote(comment.id, "down");
+
+    const verifiedReaction = {
+      optionId: optionId("Je l'ai fait !"),
+      verified: true,
+    };
+    expect(reacted.reaction).toEqual(verifiedReaction);
+    expect((await marie.loadWidget()).reaction).toEqual(verifiedReaction);
+    expect(voted).toMatchObject({ vote: "down", verified: true });
+  });
+});
+
+describe("an email that is never verified is not kept", () => {
+  const hour = 60 * 60 * 1000;
+
+  test("the hourly erasure leaves no trace of an email once its magic link has expired", async () => {
+    await api.loadWidget();
+    await api.newBrowser().post("Marie", "Superbe boucle.", {
+      email: "marie@example.com",
+    });
+
+    api.clock.advance(hour - 1);
+    await api.runHourlyErasure();
+    expect(await api.databaseHolds("marie@example.com")).toBe(true);
+
+    api.clock.advance(1);
+    await api.runHourlyErasure();
+    expect(await api.databaseHolds("marie@example.com")).toBe(false);
   });
 });

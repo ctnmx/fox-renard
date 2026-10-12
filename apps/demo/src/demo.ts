@@ -34,7 +34,7 @@ export async function startDemo(): Promise<void> {
 
   // Like the platform in production, erase expired fingerprints every hour (ADR-0006).
   setInterval(
-    () => core.eraseExpiredFingerprints().catch(console.error),
+    () => core.eraseExpired().catch(console.error),
     60 * 60 * 1000,
   ).unref();
 
