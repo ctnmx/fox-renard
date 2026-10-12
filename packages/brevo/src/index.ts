@@ -1,5 +1,5 @@
-// Brevo, the email service Fox Renard sends through in production
-// (ADR-0002): https://developers.brevo.com/reference/sendtransacemail
+// Brevo, the email service Fox Renard sends through in production:
+// https://developers.brevo.com/reference/sendtransacemail
 import type { EmailSender } from "@fox-renard/core";
 
 const transactionalEmailEndpoint = "https://api.brevo.com/v3/smtp/email";

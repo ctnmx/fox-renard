@@ -173,12 +173,12 @@ export function createStore(db: Database): Store {
       };
     },
 
-    async setReaction(pageId, visitorId, optionId, verified) {
+    async setReaction(pageId, visitorId, reaction) {
       const ofVisitorOnPage = and(
         eq(reactions.pageId, pageId),
         eq(reactions.visitorId, visitorId),
       );
-      if (optionId === null) {
+      if (reaction === null) {
         await db.delete(reactions).where(ofVisitorOnPage);
         return;
       }
@@ -186,10 +186,10 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(reactions)
-        .values({ pageId, visitorId, optionId, verified })
+        .values({ pageId, visitorId, ...reaction })
         .onConflictDoUpdate({
           target: [reactions.pageId, reactions.visitorId],
-          set: { optionId, verified },
+          set: reaction,
         });
     },
 
@@ -336,12 +336,12 @@ export function createStore(db: Database): Store {
       );
     },
 
-    async setVote(commentId, visitorId, vote, verified) {
+    async setVote(commentId, visitorId, cast) {
       const ofVisitorOnComment = and(
         eq(votes.commentId, commentId),
         eq(votes.visitorId, visitorId),
       );
-      if (vote === null) {
+      if (cast === null) {
         await db.delete(votes).where(ofVisitorOnComment);
         return;
       }
@@ -349,10 +349,15 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(votes)
-        .values({ commentId, visitorId, direction: vote, verified })
+        .values({
+          commentId,
+          visitorId,
+          direction: cast.vote,
+          verified: cast.verified,
+        })
         .onConflictDoUpdate({
           target: [votes.commentId, votes.visitorId],
-          set: { direction: vote, verified },
+          set: { direction: cast.vote, verified: cast.verified },
         });
     },
 

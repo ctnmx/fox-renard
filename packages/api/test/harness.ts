@@ -1,9 +1,15 @@
-import { type CommentSort, createCore, type Vote } from "@fox-renard/core";
+import {
+  type CommentSort,
+  createCore,
+  magicLinkParameter,
+  type Vote,
+} from "@fox-renard/core";
 import {
   ControllableClock,
   EmailOutbox,
   FixedFingerprintSecret,
   InMemoryPhotoStore,
+  magicLinkIn,
   StubBotCheck,
 } from "@fox-renard/core/fakes";
 import {
@@ -211,9 +217,9 @@ export async function startTestApi() {
   /** The magic link in the latest email sent to `address`. */
   function magicLinkTo(address: string): string {
     const email = outbox.sent.findLast(({ to }) => to === address);
-    const link = email?.text.match(/https?:\/\/\S+#fox-renard-magic-link=\S+/);
+    const link = email && magicLinkIn(email.text);
     if (!link) throw new Error(`No magic link was sent to ${address}`);
-    return link[0];
+    return link;
   }
 
   /** Follows a magic link from the page it opens, as the Widget there does. */
@@ -229,7 +235,7 @@ export async function startTestApi() {
     browserToken?: string;
   }) {
     const token = new URLSearchParams(new URL(link).hash.slice(1)).get(
-      "fox-renard-magic-link",
+      magicLinkParameter,
     );
     return client.v1.sites[":siteId"].verifications.$post(
       {

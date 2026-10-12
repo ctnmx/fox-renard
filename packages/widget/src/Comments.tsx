@@ -357,7 +357,7 @@ export function Comments({
   const [answering, setAnswering] = useState<Answering>();
   const asksEmail = !commenter?.verified;
 
-  const posted: OnPosted = (posted, email) => {
+  const afterPosting: OnPosted = (posted, email) => {
     onPosted(posted);
     if (email === undefined) return;
     setMagicLinkNotice(
@@ -383,7 +383,7 @@ export function Comments({
         email={email}
         onEmail={setEmail}
         asksEmail={asksEmail}
-        onPosted={posted}
+        onPosted={afterPosting}
       />
       {magicLinkNotice && (
         <p class="notice" role="status">
@@ -452,7 +452,7 @@ export function Comments({
                   asksEmail={asksEmail}
                   answering={answering.comment}
                   onPosted={(reply, email) => {
-                    posted(reply, email);
+                    afterPosting(reply, email);
                     stopAnswering();
                   }}
                   onCancel={stopAnswering}

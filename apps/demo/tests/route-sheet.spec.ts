@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { Email } from "@fox-renard/core";
+import { magicLinkIn } from "@fox-renard/core/fakes";
 import {
   type APIRequestContext,
   expect,
@@ -18,12 +20,11 @@ async function scrollToWidget(page: Page) {
 /** The magic link in the latest email the demo's outbox sent to `address`. */
 async function magicLinkTo(request: APIRequestContext, address: string) {
   const outbox = await request.get(`${apiOrigin}/outbox`);
-  const sent: { to: string; text: string }[] = await outbox.json();
-  const link = sent
-    .findLast(({ to }) => to === address)
-    ?.text.match(/https?:\/\/\S+#fox-renard-magic-link=\S+/);
+  const sent: Email[] = await outbox.json();
+  const email = sent.findLast(({ to }) => to === address);
+  const link = email && magicLinkIn(email.text);
   if (!link) throw new Error(`No magic link was sent to ${address}`);
-  return link[0];
+  return link;
 }
 
 test.describe("the Widget on a route sheet", () => {

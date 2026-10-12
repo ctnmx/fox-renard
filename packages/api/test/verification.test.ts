@@ -8,6 +8,8 @@ import {
   veloSheet,
 } from "./harness";
 
+const hour = 60 * 60 * 1000;
+
 let api: TestApi;
 
 beforeEach(async () => {
@@ -94,8 +96,6 @@ describe("a Guest verifies their email by magic link", () => {
 });
 
 describe("a magic link works once, for an hour", () => {
-  const hour = 60 * 60 * 1000;
-
   test("a used link is refused, and links nothing", async () => {
     await api.loadWidget();
     const marie = api.newBrowser();
@@ -336,17 +336,18 @@ describe("a Verified Commenter's Reactions and Votes count as verified", () => {
 });
 
 describe("an email that is never verified is not kept", () => {
-  const hour = 60 * 60 * 1000;
-
   test("the hourly erasure leaves no trace of an email once its magic link has expired", async () => {
     await api.loadWidget();
     await api.newBrowser().post("Marie", "Superbe boucle.", {
       email: "marie@example.com",
     });
+    const paul = api.newBrowser();
+    await paul.post("Paul", "Faite en mai.", { email: "paul@example.com" });
 
+    // The erasure spares a link that still works.
     api.clock.advance(hour - 1);
     await api.runHourlyErasure();
-    expect(await api.databaseHolds("marie@example.com")).toBe(true);
+    await paul.followMagicLink(api.magicLinkTo("paul@example.com"));
 
     api.clock.advance(1);
     await api.runHourlyErasure();

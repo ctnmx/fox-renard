@@ -33,7 +33,8 @@ export async function startDemo(): Promise<void> {
     fingerprintSecret: new FixedFingerprintSecret(),
   });
 
-  // Like the platform in production, erase expired fingerprints every hour (ADR-0006).
+  // Like the platform in production, erase what has expired every hour:
+  // fingerprints (ADR-0006) and magic links with their emails.
   setInterval(
     () => core.eraseExpired().catch(console.error),
     60 * 60 * 1000,

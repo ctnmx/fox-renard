@@ -421,8 +421,8 @@ export function createCore({
     return admitted;
   }
 
-  /** Whether what a browser casts counts as verified: it does once the browser is linked to a Verified Commenter. */
-  async function castsVerified(visitor: Visitor): Promise<boolean> {
+  /** A browser's Reactions and Votes count as verified once it is linked to a Verified Commenter. */
+  async function linkedToVerifiedCommenter(visitor: Visitor): Promise<boolean> {
     return (await store.findCommenter(visitor.id))?.verified ?? false;
   }
 
@@ -705,8 +705,12 @@ export function createCore({
       await store.setVote(
         comment.id,
         visitor.id,
-        request.vote,
-        await castsVerified(visitor),
+        request.vote === null
+          ? null
+          : {
+              vote: request.vote,
+              verified: await linkedToVerifiedCommenter(visitor),
+            },
       );
 
       const voted = await store.findComment(page.id, comment.id);
@@ -747,8 +751,9 @@ export function createCore({
       await store.setReaction(
         page.id,
         visitor.id,
-        optionId,
-        await castsVerified(visitor),
+        optionId === null
+          ? null
+          : { optionId, verified: await linkedToVerifiedCommenter(visitor) },
       );
 
       return {

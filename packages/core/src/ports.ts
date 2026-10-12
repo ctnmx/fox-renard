@@ -7,7 +7,6 @@ import type {
   Reaction,
   Site,
   Visitor,
-  Vote,
 } from "./model";
 
 /** Storage of domain data. */
@@ -31,8 +30,7 @@ export interface Store {
   setReaction(
     pageId: string,
     visitorId: string,
-    optionId: string | null,
-    verified: boolean,
+    reaction: Reaction | null,
   ): Promise<void>;
   /** The Commenter a Visitor's browser posts as, once it has posted. */
   findCommenter(visitorId: string): Promise<Commenter | null>;
@@ -90,8 +88,7 @@ export interface Store {
   setVote(
     commentId: string,
     visitorId: string,
-    vote: Vote | null,
-    verified: boolean,
+    vote: CastVote | null,
   ): Promise<void>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;
