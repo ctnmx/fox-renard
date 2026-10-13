@@ -1,6 +1,6 @@
 import type { CommentSort, Vote, WidgetData } from "@fox-renard/api/client";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
-import { type BotCheckRun, startBotCheck } from "./bot-check";
+import { useBotCheck } from "./bot-check";
 import { locale, type MessageKey, t } from "./i18n";
 import { relativeDate } from "./relative-date";
 import { type PageConnection, postComment, putVote, Refused } from "./requests";
@@ -219,24 +219,7 @@ function CommentForm({
   const emailHintId = useId();
   const displayNameInput = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
-  const botCheck = useRef<BotCheckRun>(undefined);
-
-  // The bot check starts as the Visitor begins writing, so it is solved by
-  // the time they post.
-  function beginWriting() {
-    botCheck.current ??= startBotCheck(page);
-  }
-
-  async function postWith(run: BotCheckRun, email: string | undefined) {
-    return postComment(page, {
-      botCheck: await run.solution(),
-      honeypot,
-      displayName,
-      text,
-      replyTo: answering?.id,
-      email,
-    });
-  }
+  const botCheck = useBotCheck(page);
 
   // A Reply form opens on its first empty field.
   useEffect(() => {
@@ -254,20 +237,16 @@ function CommentForm({
     setFailure(undefined);
     try {
       const given = (asksEmail && email.trim()) || undefined;
-      beginWriting();
-      let posted: Posted;
-      try {
-        posted = await postWith(botCheck.current as BotCheckRun, given);
-      } catch (error) {
-        if (!(error instanceof Refused && error.code === "bot_check_failed")) {
-          throw error;
-        }
-        // A challenge expires 30 minutes after it was issued: solve a new one.
-        botCheck.current = startBotCheck(page);
-        posted = await postWith(botCheck.current, given);
-      }
-      // Each challenge posts one Comment only.
-      botCheck.current = undefined;
+      const posted = await botCheck.post((solution) =>
+        postComment(page, {
+          botCheck: solution,
+          honeypot,
+          displayName,
+          text,
+          replyTo: answering?.id,
+          email: given,
+        }),
+      );
       onPosted(posted, given);
       setText("");
     } catch (error) {
@@ -301,7 +280,7 @@ function CommentForm({
           required
           value={displayName}
           onInput={(event) => {
-            beginWriting();
+            botCheck.start();
             onDisplayName(event.currentTarget.value);
           }}
         />
@@ -336,7 +315,7 @@ function CommentForm({
         rows={3}
         value={text}
         onInput={(event) => {
-          beginWriting();
+          botCheck.start();
           setText(event.currentTarget.value);
         }}
       />

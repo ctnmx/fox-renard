@@ -110,7 +110,9 @@ jobs:
       - name: Deploy the Worker with its secrets
         working-directory: apps/cloudflare
         run: |
-          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY, ALTCHA_HMAC_KEY: env.ALTCHA_HMAC_KEY}' > "$RUNNER_TEMP/secrets.json"
+          # A secret the wizard has not set yet stops the deployment, not the Worker.
+          jq -n '$ARGS.positional | map(. as $name | { key: $name, value: (env[$name] | select(. != null and . != "") // error("\($name) is missing: run scripts/setup-deploy.sh")) }) | from_entries' \
+            --args FINGERPRINT_SECRET BREVO_API_KEY ALTCHA_HMAC_KEY > "$RUNNER_TEMP/secrets.json"
           pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
         env:
           FINGERPRINT_SECRET: ${{ secrets.FINGERPRINT_SECRET }}
@@ -182,7 +184,9 @@ jobs:
         run: |
           set -o pipefail
           # Each new preview starts with the secrets of the base configuration.
-          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY, ALTCHA_HMAC_KEY: env.ALTCHA_HMAC_KEY}' > "$RUNNER_TEMP/secrets.json"
+          # A secret the wizard has not set yet stops the deployment, not the Worker.
+          jq -n '$ARGS.positional | map(. as $name | { key: $name, value: (env[$name] | select(. != null and . != "") // error("\($name) is missing: run scripts/setup-deploy.sh")) }) | from_entries' \
+            --args FINGERPRINT_SECRET BREVO_API_KEY ALTCHA_HMAC_KEY > "$RUNNER_TEMP/secrets.json"
           pnpm exec wrangler preview base-config secret bulk "$RUNNER_TEMP/secrets.json"
           output="$(pnpm exec wrangler preview --name "$PREVIEW" --json)"
           printf '%s\n' "$output"

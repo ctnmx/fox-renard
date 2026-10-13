@@ -103,7 +103,7 @@ describe("a Guest posts a Comment", () => {
 });
 
 describe("a Comment is plain text", () => {
-  // A Guest's Comment with a link is Pending, so its author's browser reads it.
+  // A Guest's Comment with a link is Pending, so its Commenter's browser reads it.
   test("its line breaks and HTML stay as written, and its URLs become links", async () => {
     await api.loadWidget();
     const marie = api.newBrowser();

@@ -70,7 +70,7 @@ A ticket that needs a secret, a binding or a schedule wires it here (see CLAUDE.
 
 - **A secret**:
   - add a stage to `scripts/setup-deploy.sh` that sets it as a GitHub secret, or add a secret nobody needs to see to its "Generated secrets" stage;
-  - add it to both `jq -n` lines of `ci.yml`, production and preview;
+  - add its name to both `jq -n` secrets lists of `ci.yml`, production and preview, and its value to their `env`;
   - declare it in `Env` in `apps/cloudflare/src/worker.ts`;
   - give Seam 3 a test value with `--var` in `apps/cloudflare/playwright.config.ts`.
 - **A binding**, such as an R2 bucket:

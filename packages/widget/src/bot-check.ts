@@ -1,6 +1,7 @@
 import { type Challenge, solveChallenge } from "altcha-lib";
 import { deriveKey } from "altcha-lib/algorithms/web/pbkdf2";
-import { fetchBotChallenge, type PageConnection } from "./requests";
+import { useRef } from "preact/hooks";
+import { fetchBotChallenge, type PageConnection, Refused } from "./requests";
 
 /** A bot check under way, started when the Visitor begins writing. */
 export interface BotCheckRun {
@@ -34,6 +35,40 @@ export function startBotCheck(page: PageConnection): BotCheckRun {
       const wait = postableAt - performance.now();
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
       return payload;
+    },
+  };
+}
+
+/**
+ * A form's bot check: started as the Visitor begins writing, so it is solved
+ * by the time they post, and solved anew once if its challenge expired.
+ */
+export function useBotCheck(page: PageConnection) {
+  const run = useRef<BotCheckRun>(undefined);
+  const start = () => {
+    run.current ??= startBotCheck(page);
+    return run.current;
+  };
+
+  return {
+    start,
+
+    /** Sends a Comment with a solution, by `send`, and answers what it answers. */
+    async post<T>(send: (solution: string) => Promise<T>): Promise<T> {
+      let posted: T;
+      try {
+        posted = await send(await start().solution());
+      } catch (error) {
+        if (!(error instanceof Refused && error.code === "bot_check_failed")) {
+          throw error;
+        }
+        // Its challenge may have expired while the Visitor wrote.
+        run.current = startBotCheck(page);
+        posted = await send(await run.current.solution());
+      }
+      // Each challenge posts one Comment only.
+      run.current = undefined;
+      return posted;
     },
   };
 }

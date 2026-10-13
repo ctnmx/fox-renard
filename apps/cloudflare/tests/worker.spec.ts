@@ -59,6 +59,8 @@ test("a Visitor's Reaction still counts after a reload", async ({ page }) => {
 test("a Guest's Comment posts, its bot check solved in the Worker's ALTCHA", async ({
   page,
 }) => {
+  // A network of its own, which no earlier run filled with Comments.
+  await page.setExtraHTTPHeaders({ "CF-Connecting-IP": newNetwork() });
   await page.goto(`/article/seam-3-${randomUUID()}`);
   const widget = await scrollToWidget(page);
 

@@ -63,6 +63,15 @@ export interface WidgetPage {
   title: string;
 }
 
+/** Where a browser posts a Comment, and what it asks for. */
+interface PostOptions {
+  page?: WidgetPage;
+  /** The id of the Comment this one Replies to. */
+  replyTo?: string;
+  /** The email the Commenter gives to be sent a magic link. */
+  email?: string;
+}
+
 export const routeSheet: WidgetPage = {
   siteId: rectoVerso.siteId,
   origin: "https://www.rectoverso.co",
@@ -355,11 +364,7 @@ export async function startTestApi() {
     async function tryPost(
       displayName: string,
       text: string,
-      {
-        page = routeSheet,
-        replyTo,
-        email,
-      }: { page?: WidgetPage; replyTo?: string; email?: string } = {},
+      { page = routeSheet, replyTo, email }: PostOptions = {},
     ) {
       const response = await postComment({
         page,
@@ -420,11 +425,7 @@ export async function startTestApi() {
 
       tryPost,
 
-      async post(
-        displayName: string,
-        text: string,
-        options: { page?: WidgetPage; replyTo?: string; email?: string } = {},
-      ) {
+      async post(displayName: string, text: string, options: PostOptions = {}) {
         const { status, posted } = await tryPost(displayName, text, options);
         if (!posted) {
           throw new Error(`Expected the Comment to post, got ${status}`);

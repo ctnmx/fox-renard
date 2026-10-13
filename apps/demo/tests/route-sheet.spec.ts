@@ -231,7 +231,7 @@ test.describe("Comments on a route sheet", () => {
     expect(thirdPartyRequests).toEqual([]);
   });
 
-  test("a Guest's Comment with a link awaits approval: its author sees it marked, another browser does not", async ({
+  test("a Guest's Comment with a link awaits approval: its Commenter sees it marked, another browser does not", async ({
     page,
     browser,
   }) => {

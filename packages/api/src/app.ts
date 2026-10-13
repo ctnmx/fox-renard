@@ -65,6 +65,9 @@ export interface Platform {
 }
 
 export function createApp(core: Core, { getConnInfo }: Platform) {
+  /** The client's IP address, which Core only ever hashes (ADR-0006). */
+  const clientIpOf = (c: Context) => getConnInfo(c).remote.address ?? null;
+
   return new Hono()
     .use("/v1/*", publicCors)
     .get(
@@ -125,7 +128,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           domain: requestingDomain(c.req.header("Origin")),
           pageKey,
           browserToken: browserToken ?? null,
-          clientIp: getConnInfo(c).remote.address ?? null,
+          clientIp: clientIpOf(c),
           optionId,
         });
         if (result.outcome !== "reacted") return refuse(c, result.outcome);
@@ -162,7 +165,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           domain: requestingDomain(c.req.header("Origin")),
           pageKey,
           browserToken: browserToken ?? null,
-          clientIp: getConnInfo(c).remote.address ?? null,
+          clientIp: clientIpOf(c),
           botCheck,
           honeypot: honeypot ?? "",
           displayName,
@@ -237,7 +240,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           domain: requestingDomain(c.req.header("Origin")),
           pageKey,
           browserToken: browserToken ?? null,
-          clientIp: getConnInfo(c).remote.address ?? null,
+          clientIp: clientIpOf(c),
           commentId,
           vote,
         });

@@ -107,7 +107,7 @@ export interface CommentView {
   voteCounts: VoteCounts;
   /** The Vote this browser holds on the Comment. */
   vote: Vote | null;
-  /** Whether it awaits a Member's approval, which only its author's browsers see. */
+  /** Whether it awaits a Member's approval, which only its Commenter's browsers see. */
   pending: boolean;
 }
 
@@ -224,7 +224,7 @@ const maxWorkingMagicLinks = 3;
  */
 const minTimeToPost = 3_000;
 
-/** How long a bot check's challenge works after it was issued. */
+/** How long a bot check's challenge works after it was issued, end excluded. */
 const botChallengeLifetime = 30 * 60 * 1000;
 
 /**
@@ -491,7 +491,7 @@ export function createCore({
     sort: CommentSort,
   ): Promise<CommentsView> {
     const commenter = visitor && (await store.findCommenter(visitor.id));
-    // A Pending Comment shows to its author's browsers only.
+    // A Pending Comment shows to its Commenter's browsers only.
     const listed = (await store.listComments(page.id)).filter(
       (comment) =>
         comment.status === "published" ||
@@ -614,7 +614,7 @@ export function createCore({
       if (!solved) return { outcome: "bot-check-failed" };
       const sinceChallenge = clock.now().getTime() - solved.issuedAt.getTime();
       if (sinceChallenge < minTimeToPost) return { outcome: "posted-too-soon" };
-      if (sinceChallenge > botChallengeLifetime) {
+      if (sinceChallenge >= botChallengeLifetime) {
         return { outcome: "bot-check-failed" };
       }
 
