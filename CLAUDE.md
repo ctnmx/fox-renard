@@ -15,7 +15,7 @@ Default five-role vocabulary. See `docs/agents/triage-labels.md`.
 
 ### Tickets
 
-When an acceptance criterion needs a platform adapter (a schedule, a secret, a request header), `/to-tickets` names the ticket that builds the adapter, in both tickets.
+When an acceptance criterion needs a platform adapter (a schedule, a secret, a binding, a request header), the ticket that needs it and the ticket that wires it name each other: `/to-tickets` writes both, and `/implement` adds the pair when a ticket lacks it. Whichever of the two lands second wires the adapter into the platform.
 
 ### Pull requests
 
