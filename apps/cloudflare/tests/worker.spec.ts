@@ -56,6 +56,21 @@ test("a Visitor's Reaction still counts after a reload", async ({ page }) => {
   await expect(option()).toContainText("1");
 });
 
+test("a Guest's Comment posts, its bot check solved in the Worker's ALTCHA", async ({
+  page,
+}) => {
+  await page.goto(`/article/seam-3-${randomUUID()}`);
+  const widget = await scrollToWidget(page);
+
+  await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+  await widget
+    .getByRole("textbox", { name: "Ton commentaire" })
+    .fill("Superbe boucle.");
+  await widget.getByRole("button", { name: "Publier" }).click();
+
+  await expect(widget.getByRole("article")).toContainText("Superbe boucle.");
+});
+
 test("abuse limits count each network Cloudflare reports apart", async () => {
   const client = createClient(apiOrigin);
   const onPage = client.v1.sites[":siteId"].pages[":pageKey"];

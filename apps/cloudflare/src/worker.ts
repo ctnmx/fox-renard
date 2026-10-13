@@ -1,7 +1,8 @@
 // The Cloudflare adapter: the Worker that runs Fox Renard in production.
+import { createAltchaBotCheck } from "@fox-renard/altcha";
 import { createApp } from "@fox-renard/api";
 import { createBrevoEmailSender } from "@fox-renard/brevo";
-import { type BotCheck, createCore, type PhotoStore } from "@fox-renard/core";
+import { createCore, type PhotoStore } from "@fox-renard/core";
 import { createStore } from "@fox-renard/db";
 import { connectPostgres } from "@fox-renard/db/postgres";
 import { getConnInfo } from "@hono/cloudflare-workers";
@@ -14,20 +15,20 @@ interface Env {
   BREVO_API_KEY: string;
   /** The address on Fox Renard's sender subdomain that every email comes from. */
   EMAIL_SENDER_ADDRESS: string;
+  /** The secret that signs the bot check's challenges. */
+  ALTCHA_HMAC_KEY: string;
 }
 
 function notWiredYet(piece: string) {
   return () => Promise.reject(new Error(`${piece} is not wired yet.`));
 }
 
-// Core uses neither yet: #12 wires an R2 bucket for Photos, and #9 the ALTCHA
-// key for the bot check.
+// Core stores no Photo yet: #12 wires an R2 bucket for them.
 const photos: PhotoStore = {
   put: notWiredYet("The Photo store (#12)"),
   get: notWiredYet("The Photo store (#12)"),
   delete: notWiredYet("The Photo store (#12)"),
 };
-const botCheck: BotCheck = { verify: notWiredYet("The bot check (#9)") };
 
 /** Core on Cloudflare's adapters, with a database connection that `close` ends. */
 function openCore(env: Env) {
@@ -42,7 +43,7 @@ function openCore(env: Env) {
       senderAddress: env.EMAIL_SENDER_ADDRESS,
     }),
     photos,
-    botCheck,
+    botCheck: createAltchaBotCheck({ hmacKey: env.ALTCHA_HMAC_KEY }),
     fingerprintSecret: { current: async () => env.FINGERPRINT_SECRET },
   });
   return { core, close: database.close };
@@ -59,8 +60,9 @@ export default {
     }
   },
 
-  // Every hour, so no fingerprint outlives 24 hours (ADR-0006), and an email
-  // nobody verified goes within an hour of its magic link expiring.
+  // Every hour, so no fingerprint outlives 24 hours (ADR-0006), an email
+  // nobody verified goes within an hour of its magic link expiring, and the
+  // bot check forgets the challenges that expired.
   async scheduled(_controller, env) {
     const { core, close } = openCore(env);
     try {

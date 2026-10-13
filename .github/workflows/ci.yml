@@ -110,11 +110,12 @@ jobs:
       - name: Deploy the Worker with its secrets
         working-directory: apps/cloudflare
         run: |
-          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY}' > "$RUNNER_TEMP/secrets.json"
+          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY, ALTCHA_HMAC_KEY: env.ALTCHA_HMAC_KEY}' > "$RUNNER_TEMP/secrets.json"
           pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
         env:
           FINGERPRINT_SECRET: ${{ secrets.FINGERPRINT_SECRET }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          ALTCHA_HMAC_KEY: ${{ secrets.ALTCHA_HMAC_KEY }}
 
       - name: Wait for embed.foxrenard.com
         # The first deployment waits for its certificate.
@@ -181,7 +182,7 @@ jobs:
         run: |
           set -o pipefail
           # Each new preview starts with the secrets of the base configuration.
-          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY}' > "$RUNNER_TEMP/secrets.json"
+          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY, ALTCHA_HMAC_KEY: env.ALTCHA_HMAC_KEY}' > "$RUNNER_TEMP/secrets.json"
           pnpm exec wrangler preview base-config secret bulk "$RUNNER_TEMP/secrets.json"
           output="$(pnpm exec wrangler preview --name "$PREVIEW" --json)"
           printf '%s\n' "$output"
@@ -189,6 +190,7 @@ jobs:
         env:
           FINGERPRINT_SECRET: ${{ secrets.PREVIEW_FINGERPRINT_SECRET }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          ALTCHA_HMAC_KEY: ${{ secrets.PREVIEW_ALTCHA_HMAC_KEY }}
 
       - name: Install Chromium
         run: pnpm --filter @fox-renard/cloudflare exec playwright install --with-deps chromium
