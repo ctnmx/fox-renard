@@ -6,7 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 // Seam 3: the Worker as Cloudflare runs it, with Hyperdrive, its secrets and
 // its schedule, driven from the demo route sheet. Tests tagged @smoke also run
-// against each deployment, so they change nothing there.
+// against each deployment, where they only load the Widget.
 
 const prompt = "Alors, cet itinéraire ?";
 
@@ -39,6 +39,21 @@ test("the Widget shows Recto Verso's Reaction Set", { tag: "@smoke" }, async ({
     /🎒\s*Je le prépare/,
     /🏁\s*Je l'ai fait !/,
   ]);
+});
+
+test("a Visitor's Reaction still counts after a reload", async ({ page }) => {
+  // A route sheet of its own, so its counts start at zero.
+  await page.goto(`/article/seam-3-${randomUUID()}`);
+  let widget = await scrollToWidget(page);
+  const option = () => widget.getByRole("button", { name: "Je le prépare" });
+
+  await option().click();
+  await expect(option()).toHaveAttribute("aria-pressed", "true");
+
+  await page.reload();
+  widget = await scrollToWidget(page);
+  await expect(option()).toHaveAttribute("aria-pressed", "true");
+  await expect(option()).toContainText("1");
 });
 
 test("abuse limits count each network Cloudflare reports apart", async () => {

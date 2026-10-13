@@ -5,11 +5,11 @@ import { defineConfig, devices } from "@playwright/test";
  * The deployment the smoke check loads the route sheet against. Without one,
  * Seam 3 runs the Worker locally on the demo's API origin.
  */
-const deployment = process.env.FOX_RENARD_API_ORIGIN;
+const deploymentOrigin = process.env.FOX_RENARD_API_ORIGIN;
 
 /** The PostgreSQL that Hyperdrive's binding reaches when the Worker runs locally. */
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
-if (!deployment && !testDatabaseUrl) {
+if (!deploymentOrigin && !testDatabaseUrl) {
   throw new Error(
     "Seam 3 runs the Worker on PostgreSQL: set TEST_DATABASE_URL, such as postgres://postgres:postgres@localhost:5432/postgres.",
   );
@@ -39,18 +39,18 @@ export default defineConfig({
   testDir: "tests",
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? "github" : "list",
-  globalSetup: deployment ? undefined : "./tests/global-setup.ts",
+  globalSetup: deploymentOrigin ? undefined : "./tests/global-setup.ts",
   use: {
     baseURL: siteOrigin,
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
-    ...(deployment ? [] : [worker]),
+    ...(deploymentOrigin ? [] : [worker]),
     {
       command: "pnpm --filter @fox-renard/demo route-sheet",
       url: siteOrigin,
-      env: { FOX_RENARD_API_ORIGIN: deployment ?? apiOrigin },
+      env: { FOX_RENARD_API_ORIGIN: deploymentOrigin ?? apiOrigin },
       reuseExistingServer: !process.env.CI,
     },
   ],

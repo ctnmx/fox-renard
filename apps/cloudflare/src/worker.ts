@@ -30,7 +30,7 @@ const photos: PhotoStore = {
 const botCheck: BotCheck = { verify: notWiredYet("The bot check (#9)") };
 
 /** Core on Cloudflare's adapters, with a database connection that `close` ends. */
-function connect(env: Env) {
+function openCore(env: Env) {
   // A Worker cannot share a connection between requests; Hyperdrive pools
   // the connections to the database instead.
   const database = connectPostgres(env.HYPERDRIVE.connectionString);
@@ -50,7 +50,7 @@ function connect(env: Env) {
 
 export default {
   async fetch(request, env, ctx) {
-    const { core, close } = connect(env);
+    const { core, close } = openCore(env);
     try {
       // Cloudflare tells the client's IP address in CF-Connecting-IP.
       return await createApp(core, { getConnInfo }).fetch(request, env, ctx);
@@ -62,7 +62,7 @@ export default {
   // Every hour, so no fingerprint outlives 24 hours (ADR-0006), and an email
   // nobody verified goes within an hour of its magic link expiring.
   async scheduled(_controller, env) {
-    const { core, close } = connect(env);
+    const { core, close } = openCore(env);
     try {
       await core.eraseExpired();
     } finally {

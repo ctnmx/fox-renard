@@ -7,7 +7,7 @@ Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`
 | Host | Serves |
 | --- | --- |
 | `embed.foxrenard.com` | The Widget script and the HTTP API. The Widget calls the API on its script's own origin, so they share it. |
-| `console.foxrenard.com` | Reserved for the Member console (#14). |
+| `console.foxrenard.com` | The Member console, once #14 lands. |
 | `mail.foxrenard.com` | The sender domain Brevo authenticates. Every email comes from `noreply@mail.foxrenard.com`. |
 | `pr-<number>-fox-renard.<subdomain>.workers.dev` | The preview of a pull request. |
 | `foxrenard.com` | Free for a landing page. |
@@ -20,7 +20,7 @@ CI (`.github/workflows/ci.yml`) deploys once the `check` job passes:
 
 - **Merging to `main`** deploys production. CI migrates the production database, runs the seed, points Hyperdrive at the database, deploys the Worker with its secrets, then runs the smoke check against `embed.foxrenard.com`.
 - **Each pull request** gets a preview: a Neon branch `pr-<number>` of the preview project, migrated and seeded, its own Hyperdrive config, and a Cloudflare preview of the Worker. The smoke check runs against it, and the pull request links it as a `preview` deployment.
-- **Closing a pull request** deletes its preview, its Hyperdrive config and its Neon branch (`.github/workflows/preview-cleanup.yml`).
+- **Closing a pull request** deletes its preview, its Hyperdrive config and its Neon branch (`apps/cloudflare/scripts/delete-preview.sh`). A preview job that finds its pull request closed when it ends deletes them too.
 
 Some rules hold for every deployment:
 
@@ -29,6 +29,7 @@ Some rules hold for every deployment:
 - **Previews never hold production data** (ADR-0008). Their branches belong to a second Neon project, and their seed uses the demo Member `membre@example.com`.
 - **The smoke check** serves the demo route sheet on `localhost` and loads it against the deployment. It sees the Reaction Set, as Seam 3's `@smoke` test does locally. It adds one Page, `article-smoke-check`, to Recto Verso's Site, which is why `localhost` is one of its Allowed Domains.
 - **Previews run no Cron Trigger.** Cloudflare runs the hourly erasure on production only.
+  _Contradicts ADR-0006 on previews, but worth accepting:_ a preview erases expired fingerprints only when someone reacts or votes there, and keeps expired magic links, with their emails, until its pull request closes. Previews hold only the data of people testing them, and Cloudflare runs no Cron Trigger on a preview.
 
 ## Set it up
 
@@ -81,7 +82,7 @@ Everything stays within free plans (ADR-0002). These are the limits Fox Renard c
 
 | Service | Limit | What reaches it |
 | --- | --- | --- |
-| Workers | 100,000 requests a day | Every API request. Loading `widget.js` is a static asset, which is free and unlimited. |
+| Workers | 100,000 requests a day | Every API request. Requests for `widget.js` hit a static asset, which is free and unlimited. |
 | Workers | 10 ms of CPU per request and per Cron Trigger | A request over it fails with error 1102. |
 | Workers | 5 Cron Triggers per account | Fox Renard uses 1. |
 | Workers | 100 previews per Worker | Past it, Cloudflare deletes the least recently deployed. |

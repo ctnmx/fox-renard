@@ -17,7 +17,9 @@
   "vars": { "EMAIL_SENDER_ADDRESS": "noreply@mail.foxrenard.com" },
   // CI replaces each id with the Hyperdrive config of the deployment's database.
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "production-hyperdrive-id" }],
-  "observability": { "enabled": true },
+  // Workers Logs stay off: each request's log would keep its headers, the
+  // client's IP address among them (ADR-0006). `wrangler tail` streams logs
+  // without storing them.
   "previews": {
     "vars": { "EMAIL_SENDER_ADDRESS": "noreply@mail.foxrenard.com" },
     "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "preview-hyperdrive-id" }]

@@ -80,7 +80,7 @@ jobs:
     environment:
       name: production
       url: https://embed.foxrenard.com
-    # One deployment at a time, never cancelled halfway through its migrations.
+    # One deployment at a time, never stopped halfway through its migrations.
     concurrency: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -134,9 +134,12 @@ jobs:
     environment:
       name: preview
       url: ${{ steps.deploy.outputs.url }}
-    concurrency:
-      group: preview-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+    # One job at a time per pull request, this one or its cleanup: neither
+    # stops the other halfway.
+    concurrency: preview-${{ github.event.pull_request.number }}
+    permissions:
+      contents: read
+      pull-requests: read
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -193,3 +196,18 @@ jobs:
         run: pnpm --filter @fox-renard/cloudflare smoke
         env:
           FOX_RENARD_API_ORIGIN: ${{ steps.deploy.outputs.url }}
+
+      # The pull request may have closed while this job waited or ran, after
+      # its cleanup had already deleted what was there.
+      - name: Delete the preview if its pull request has closed
+        if: always()
+        run: |
+          state="$(gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+          if [ "$state" != OPEN ]; then
+            bash apps/cloudflare/scripts/delete-preview.sh
+          fi
+        env:
+          NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PREVIEW_PROJECT_ID }}

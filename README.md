@@ -42,9 +42,9 @@ pnpm --filter @fox-renard/demo start   # route sheet on http://localhost:4173
 ```
 
 `pnpm typecheck`, `pnpm lint`, `pnpm test` (HTTP API), `pnpm e2e` (Widget in
-Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request,
-with `pnpm --filter @fox-renard/cloudflare e2e` (the Worker in workerd, on the
-PostgreSQL that `TEST_DATABASE_URL` names).
+Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
+CI also runs the Worker in workerd: `pnpm --filter @fox-renard/cloudflare e2e`,
+on the PostgreSQL that `TEST_DATABASE_URL` names.
 
 ## Install the Widget
 

@@ -216,7 +216,7 @@ keep_secret() {
 
 run_wizard() {
 
-TOTAL_STAGES=10
+TOTAL_STAGES=11
 ENV_FILE=".env.deploy"
 cd "$(git rev-parse --show-toplevel)"
 
@@ -280,7 +280,7 @@ if ! keep_secret DATABASE_URL; then
   set_secret DATABASE_URL "$DATABASE_URL"
 fi
 
-stage "Neon: the preview project and its API key"
+stage "Neon: the preview project"
 say "Each pull request's preview gets a branch of a second project, so no"
 say "production data ever reaches a preview (ADR-0008)."
 open_url "https://console.neon.tech/app/projects"
@@ -289,8 +289,11 @@ step "In its Settings, copy the Project ID."
 ask NEON_PREVIEW_PROJECT_ID "Paste the project ID:"
 write_env NEON_PREVIEW_PROJECT_ID "$NEON_PREVIEW_PROJECT_ID"
 set_var NEON_PREVIEW_PROJECT_ID "$NEON_PREVIEW_PROJECT_ID"
+
+stage "Neon: an API key for previews"
 if ! keep_secret NEON_API_KEY; then
-  step "In your organization's Settings, open API keys and select Create new."
+  open_url "https://console.neon.tech"
+  step "Switch to your organization, then open Settings, API keys, and select Create new."
   step "Choose Project-scoped, for the project fox-renard-previews, and copy the key."
   note "CI creates and deletes the preview branches with it. It reaches no other project."
   ask_secret NEON_API_KEY "Paste the API key:"
