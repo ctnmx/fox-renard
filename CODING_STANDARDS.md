@@ -8,7 +8,10 @@ Core (`packages/core`) holds every rule a Visitor or Member would state: which d
 
 ## Tests observe, like a Visitor or Member
 
-Tests drive Fox Renard at Seam 1 (`startTestApi()`) or Seam 2 (the demo route sheet in Chromium) and assert on what a Visitor or Member observes: HTTP responses, what a later request returns, emails in the outbox, Photos in the store, the rendered Widget and the requests the browser makes. Database rows and internal calls stay out of assertions.
+Tests drive Fox Renard at Seam 1 (`startTestApi()`) or Seam 2 (the demo route sheet in Chromium) and assert on what a Visitor or Member observes: HTTP responses, what a later request returns, emails in the outbox, Photos in the store, the rendered Widget and the requests the browser makes. Database rows and internal calls stay out of assertions, with two set shapes:
+
+- **A stored fact nobody sees yet**, such as whether a Reaction counts as verified, reaches the test through the browser it belongs to: the API tells that browser its own value.
+- **Proving that something is gone**, such as an email nobody verified, an IP address or an erased person, may search every table with the harness's `databaseHolds`, which names none. It proves absence only; presence goes through the API.
 
 ## Vocabulary
 
