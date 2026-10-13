@@ -47,9 +47,10 @@ GitHub Actions runs these on every pull request, and all of them must pass:
 - the build;
 - the Widget size budget: 25 KB gzipped at most;
 - Seam 1, the HTTP API tests;
-- Seam 2, the Widget in Chromium.
+- Seam 2, the Widget in Chromium;
+- Seam 3, the Worker in workerd.
 
-CLA Assistant adds the `license/cla` check. Preview deployments, each with its own database branch, arrive with [#4](https://github.com/ctnmx/fox-renard/issues/4).
+CLA Assistant adds the `license/cla` check. Once the deployment is set up, each pull request from this repository also gets a preview, and merging to `main` deploys production ([docs/deploy.md](docs/deploy.md)).
 
 ## Run the tests locally
 
@@ -82,6 +83,14 @@ Playwright builds the Widget, starts the demo route sheet, hostile CSS included,
 
 To run one file, pass its path: `pnpm e2e tests/route-sheet.spec.ts`.
 
+### Seam 3: the Worker in workerd
+
+```sh
+TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm --filter @fox-renard/cloudflare e2e
+```
+
+Playwright starts the Worker under `wrangler dev`, as Cloudflare runs it, and drives it from the demo route sheet. Hyperdrive's local binding reaches the PostgreSQL that `TEST_DATABASE_URL` names: start one of your own, with a password in its URL. Claude Code cloud sessions start one and set `TEST_DATABASE_URL`. The tests live in `apps/cloudflare/tests`.
+
 ### Before you push
 
 Run what CI runs:
@@ -93,6 +102,7 @@ pnpm build
 pnpm size
 pnpm test
 pnpm e2e
+pnpm --filter @fox-renard/cloudflare e2e
 ```
 
 If you changed `packages/db/src/schema.ts`, run `pnpm --filter @fox-renard/db generate` and commit the migration it writes.

@@ -15,7 +15,7 @@ Default five-role vocabulary. See `docs/agents/triage-labels.md`.
 
 ### Tickets
 
-When an acceptance criterion needs a platform adapter (a schedule, a secret, a binding, a request header), the ticket that needs it and the ticket that wires it name each other: `/to-tickets` writes both, and `/implement` adds the pair when a ticket lacks it. Whichever of the two lands second wires the adapter into the platform.
+When an acceptance criterion needs a platform adapter (a schedule, a secret, a binding, a request header), the ticket that needs it and the ticket that wires it name each other: `/to-tickets` writes both, and `/implement` adds the pair when a ticket lacks it. Whichever of the two lands second wires the adapter into the platform, as `docs/deploy.md` describes.
 
 ### Pull requests
 
@@ -28,6 +28,7 @@ Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agen
 ## Code
 
 - Seam 1 tests (`packages/api/test`) start the HTTP API in-process with `startTestApi()`; Seam 2 tests (`apps/demo/tests`) drive the demo route sheet in Chromium, and `pnpm --filter @fox-renard/demo screenshot <file.png>` captures the Widget there.
+- Seam 3 tests (`apps/cloudflare/tests`) run the Worker under `wrangler dev` on the PostgreSQL that `TEST_DATABASE_URL` names; a cloud session's start hook sets it.
 - Schema changes go in `packages/db/src/schema.ts`; `pnpm --filter @fox-renard/db generate --name <topic>` then writes the migration.
 - `@playwright/test` stays on the version whose Chromium the cloud container pre-installs in `/opt/pw-browsers`.
 

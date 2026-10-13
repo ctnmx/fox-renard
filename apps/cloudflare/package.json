@@ -1,0 +1,28 @@
+{
+  "name": "@fox-renard/cloudflare",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "e2e": "pnpm --filter @fox-renard/widget build && playwright test",
+    "smoke": "playwright test --grep @smoke"
+  },
+  "dependencies": {
+    "@fox-renard/api": "workspace:*",
+    "@fox-renard/brevo": "workspace:*",
+    "@fox-renard/core": "workspace:*",
+    "@fox-renard/db": "workspace:*",
+    "@hono/cloudflare-workers": "catalog:",
+    "hono": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
+    "@fox-renard/demo": "workspace:*",
+    "@fox-renard/widget": "workspace:*",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "wrangler": "catalog:"
+  }
+}

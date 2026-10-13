@@ -40,7 +40,8 @@ export function createBrevoEmailSender({
       if (response.ok) return;
 
       // The reason only: the recipient's address stays out of error logs.
-      const refusal: BrevoRefusal = await response.json().catch(() => ({}));
+      // Workers type `json()` as unknown, Node as any.
+      const refusal = (await response.json().catch(() => ({}))) as BrevoRefusal;
       throw new Error(
         `Brevo refused the email (${response.status} ${refusal.code ?? ""}): ${refusal.message ?? response.statusText}`,
       );

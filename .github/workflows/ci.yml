@@ -4,10 +4,27 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The wizard's last stage deploys main once the secrets exist.
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      # Seam 3 runs the Worker on PostgreSQL, as Hyperdrive reaches Neon in production.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -41,9 +58,156 @@ jobs:
         run: pnpm --filter @fox-renard/demo exec playwright install --with-deps chromium
       - name: "Seam 2: Widget in Chromium"
         run: pnpm e2e
+      - name: "Seam 3: Worker in workerd"
+        run: pnpm --filter @fox-renard/cloudflare e2e
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
-          path: apps/demo/test-results/
+          path: |
+            apps/demo/test-results/
+            apps/cloudflare/test-results/
           retention-days: 7
+
+  # docs/deploy.md describes both deployments. Neither runs before the wizard
+  # sets CLOUDFLARE_ACCOUNT_ID, its last value.
+  production:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://embed.foxrenard.com
+    # One deployment at a time, never stopped halfway through its migrations.
+    concurrency: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Before the Worker deploys, so a migration must keep the running Worker working.
+      - name: Migrate the database
+        run: pnpm --filter @fox-renard/db migrate
+      - name: Seed Recto Verso
+        run: pnpm --filter @fox-renard/db seed
+        env:
+          SEED_MEMBER_EMAIL: ${{ secrets.SEED_MEMBER_EMAIL }}
+      - name: Build the Widget
+        run: pnpm --filter @fox-renard/widget build
+      - name: Point Hyperdrive at the database
+        working-directory: apps/cloudflare
+        run: node scripts/hyperdrive.mjs bind fox-renard-production production
+      - name: Deploy the Worker with its secrets
+        working-directory: apps/cloudflare
+        run: |
+          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY}' > "$RUNNER_TEMP/secrets.json"
+          pnpm exec wrangler deploy --secrets-file "$RUNNER_TEMP/secrets.json"
+        env:
+          FINGERPRINT_SECRET: ${{ secrets.FINGERPRINT_SECRET }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+
+      - name: Wait for embed.foxrenard.com
+        # The first deployment waits for its certificate.
+        run: curl --fail --silent --show-error --retry 30 --retry-delay 10 --retry-all-errors --output /dev/null https://embed.foxrenard.com/widget.js
+      - name: Install Chromium
+        run: pnpm --filter @fox-renard/cloudflare exec playwright install --with-deps chromium
+      - name: Smoke check
+        run: pnpm --filter @fox-renard/cloudflare smoke
+        env:
+          FOX_RENARD_API_ORIGIN: https://embed.foxrenard.com
+
+  preview:
+    needs: check
+    # Forks receive no secrets.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && vars.CLOUDFLARE_ACCOUNT_ID != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    # One job at a time per pull request, this one or its cleanup: neither
+    # stops the other halfway.
+    concurrency: preview-${{ github.event.pull_request.number }}
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      PREVIEW: pr-${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # A branch of the preview project, which never holds production data (ADR-0008).
+      - name: Create the preview's Neon branch
+        id: neon
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PREVIEW_PROJECT_ID }}
+          branch_name: pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+      - name: Migrate and seed the preview's database
+        run: |
+          pnpm --filter @fox-renard/db migrate
+          pnpm --filter @fox-renard/db seed
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+          SEED_MEMBER_EMAIL: membre@example.com
+      - name: Build the Widget
+        run: pnpm --filter @fox-renard/widget build
+      - name: Point Hyperdrive at the preview's database
+        working-directory: apps/cloudflare
+        run: node scripts/hyperdrive.mjs bind "fox-renard-$PREVIEW" preview
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url }}
+      - name: Deploy the preview
+        id: deploy
+        working-directory: apps/cloudflare
+        run: |
+          set -o pipefail
+          # Each new preview starts with the secrets of the base configuration.
+          jq -n '{FINGERPRINT_SECRET: env.FINGERPRINT_SECRET, BREVO_API_KEY: env.BREVO_API_KEY}' > "$RUNNER_TEMP/secrets.json"
+          pnpm exec wrangler preview base-config secret bulk "$RUNNER_TEMP/secrets.json"
+          output="$(pnpm exec wrangler preview --name "$PREVIEW" --json)"
+          printf '%s\n' "$output"
+          echo "url=$(jq -er '.preview.urls[0]' <<< "$output")" >> "$GITHUB_OUTPUT"
+        env:
+          FINGERPRINT_SECRET: ${{ secrets.PREVIEW_FINGERPRINT_SECRET }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+
+      - name: Install Chromium
+        run: pnpm --filter @fox-renard/cloudflare exec playwright install --with-deps chromium
+      - name: Smoke check
+        run: pnpm --filter @fox-renard/cloudflare smoke
+        env:
+          FOX_RENARD_API_ORIGIN: ${{ steps.deploy.outputs.url }}
+
+      # The pull request may have closed while this job waited or ran, after
+      # its cleanup had already deleted what was there.
+      - name: Delete the preview if its pull request has closed
+        if: always()
+        run: |
+          state="$(gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)"
+          if [ "$state" != OPEN ]; then
+            bash apps/cloudflare/scripts/delete-preview.sh
+          fi
+        env:
+          NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PREVIEW_PROJECT_ID }}

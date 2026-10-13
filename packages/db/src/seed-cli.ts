@@ -1,7 +1,5 @@
 // Seeds a PostgreSQL database: DATABASE_URL=… SEED_MEMBER_EMAIL=… pnpm --filter @fox-renard/db seed
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "./schema";
+import { connectPostgres } from "./postgres";
 import { seed } from "./seed";
 
 const { DATABASE_URL, SEED_MEMBER_EMAIL } = process.env;
@@ -10,10 +8,10 @@ if (!DATABASE_URL || !SEED_MEMBER_EMAIL) {
   process.exit(1);
 }
 
-const client = postgres(DATABASE_URL, { max: 1 });
+const { db, close } = connectPostgres(DATABASE_URL);
 try {
-  await seed(drizzle(client, { schema }), { memberEmail: SEED_MEMBER_EMAIL });
+  await seed(db, { memberEmail: SEED_MEMBER_EMAIL });
   console.log("Recto Verso is seeded.");
 } finally {
-  await client.end();
+  await close();
 }

@@ -3,9 +3,13 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
+  "exports": {
+    "./addresses": "./src/addresses.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "start": "tsx src/server.ts",
+    "route-sheet": "tsx src/route-sheet-server.ts",
     "e2e": "pnpm --filter @fox-renard/widget build && playwright test",
     "screenshot": "pnpm --filter @fox-renard/widget build && tsx src/screenshot.ts"
   },
