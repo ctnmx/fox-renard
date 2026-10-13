@@ -29,6 +29,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The proje
 | Brevo | `packages/brevo` | The email adapter Fox Renard sends through in production. |
 | Widget | `packages/widget` | The `<fox-renard-widget>` custom element (Preact). |
 | Demo | `apps/demo` | A local route sheet embedding the Widget. |
+| Cloudflare | `apps/cloudflare` | The Worker that runs Fox Renard in production. |
 
 ## Develop
 
@@ -41,13 +42,15 @@ pnpm --filter @fox-renard/demo start   # route sheet on http://localhost:4173
 ```
 
 `pnpm typecheck`, `pnpm lint`, `pnpm test` (HTTP API), `pnpm e2e` (Widget in
-Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
+Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request,
+with `pnpm --filter @fox-renard/cloudflare e2e` (the Worker in workerd, on the
+PostgreSQL that `TEST_DATABASE_URL` names).
 
 ## Install the Widget
 
 ```html
 <fox-renard-widget site-id="…" page-key="article-{slug}"></fox-renard-widget>
-<script async src="https://…/widget.js"></script>
+<script async src="https://embed.foxrenard.com/widget.js"></script>
 ```
 
 The first load of an unknown Page Key from an Allowed Domain creates the Page.
@@ -63,3 +66,16 @@ DATABASE_URL=postgres://… SEED_MEMBER_EMAIL=… pnpm seed
 
 The seed creates Recto Verso's Organization, Member, Site and Reaction Set,
 and changes nothing when run again.
+
+## Deploy
+
+Merging to `main` deploys Fox Renard to Cloudflare at `embed.foxrenard.com`,
+and each pull request gets a preview. Nothing deploys until someone runs the
+setup wizard:
+
+```sh
+bash scripts/setup-deploy.sh
+```
+
+[docs/deploy.md](docs/deploy.md) explains what runs where and the free-tier
+quotas to watch.
