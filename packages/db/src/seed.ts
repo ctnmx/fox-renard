@@ -25,7 +25,10 @@ export const rectoVerso = {
   name: "Recto Verso",
   organizationId: "f451151d-29d5-4aef-b667-26688549afbf",
   siteId: "254bba05-acb2-4d9c-b9fd-f967eb7b539e",
-  /** rectoverso.co redirects to www; `localhost` serves the local demo route sheet. */
+  /**
+   * rectoverso.co redirects to www. `localhost` serves the demo route sheet,
+   * which the smoke check loads against each deployment.
+   */
   allowedDomains: ["rectoverso.co", "www.rectoverso.co", "localhost"],
   reactionSet: {
     prompt: "Alors, cet itinéraire ?",

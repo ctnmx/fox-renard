@@ -4,7 +4,9 @@ packages:
 
 catalog:
   "@biomejs/biome": 2.5.15
+  "@cloudflare/workers-types": 5.20261009.1
   "@electric-sql/pglite": 0.5.8
+  "@hono/cloudflare-workers": 1.0.1
   "@hono/node-server": 2.1.4
   "@hono/zod-validator": 0.9.1
   "@playwright/test": 1.56.1
@@ -18,7 +20,9 @@ catalog:
   tsx: 4.23.15
   typescript: 7.0.2
   vitest: 5.0.3
+  wrangler: 4.149.0
   zod: 4.6.5
 
 onlyBuiltDependencies:
   - esbuild
+  - workerd
