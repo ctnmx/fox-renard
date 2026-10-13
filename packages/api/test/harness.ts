@@ -1,9 +1,15 @@
-import { type CommentSort, createCore, type Vote } from "@fox-renard/core";
+import {
+  type CommentSort,
+  createCore,
+  magicLinkParameter,
+  type Vote,
+} from "@fox-renard/core";
 import {
   ControllableClock,
   EmailOutbox,
   FixedFingerprintSecret,
   InMemoryPhotoStore,
+  magicLinkIn,
   StubBotCheck,
 } from "@fox-renard/core/fakes";
 import {
@@ -14,7 +20,11 @@ import {
   seed,
   seedSite,
 } from "@fox-renard/db";
-import { createPgliteDatabase, emptyDatabase } from "@fox-renard/db/pglite";
+import {
+  createPgliteDatabase,
+  databaseHolds,
+  emptyDatabase,
+} from "@fox-renard/db/pglite";
 import { testClient } from "hono/testing";
 import { createApp } from "../src";
 
@@ -110,21 +120,19 @@ export async function startTestApi() {
   const botCheck = new StubBotCheck();
   const fingerprintSecret = new FixedFingerprintSecret();
 
-  const app = createApp(
-    createCore({
-      store: createStore(db),
-      clock,
-      email: outbox,
-      photos,
-      botCheck,
-      fingerprintSecret,
+  const core = createCore({
+    store: createStore(db),
+    clock,
+    email: outbox,
+    photos,
+    botCheck,
+    fingerprintSecret,
+  });
+  const app = createApp(core, {
+    getConnInfo: (c) => ({
+      remote: { address: c.req.header(clientIpHeader) },
     }),
-    {
-      getConnInfo: (c) => ({
-        remote: { address: c.req.header(clientIpHeader) },
-      }),
-    },
-  );
+  });
 
   const client = testClient(app);
 
@@ -184,6 +192,7 @@ export async function startTestApi() {
     displayName,
     text,
     replyTo,
+    email,
   }: {
     page?: WidgetPage;
     origin?: string;
@@ -192,12 +201,47 @@ export async function startTestApi() {
     text: string;
     /** The id of the Comment this one Replies to. */
     replyTo?: string;
+    /** The email the Commenter gives to be sent a magic link. */
+    email?: string;
   }) {
     return client.v1.sites[":siteId"].pages[":pageKey"].comments.$post(
       {
         param: { siteId: page.siteId, pageKey: page.pageKey },
         header: authorization(browserToken),
-        json: { displayName, text, replyTo },
+        json: { displayName, text, replyTo, email },
+      },
+      { headers: { Origin: origin } },
+    );
+  }
+
+  /** The magic link in the latest email sent to `address`. */
+  function magicLinkTo(address: string): string {
+    const email = outbox.sent.findLast(({ to }) => to === address);
+    const link = email && magicLinkIn(email.text);
+    if (!link) throw new Error(`No magic link was sent to ${address}`);
+    return link;
+  }
+
+  /** Follows a magic link from the page it opens, as the Widget there does. */
+  function followMagicLink({
+    link,
+    origin = new URL(link).origin,
+    siteId = rectoVerso.siteId,
+    browserToken,
+  }: {
+    link: string;
+    origin?: string;
+    siteId?: string;
+    browserToken?: string;
+  }) {
+    const token = new URLSearchParams(new URL(link).hash.slice(1)).get(
+      magicLinkParameter,
+    );
+    return client.v1.sites[":siteId"].verifications.$post(
+      {
+        param: { siteId },
+        header: authorization(browserToken),
+        json: { token: token ?? "" },
       },
       { headers: { Origin: origin } },
     );
@@ -271,6 +315,22 @@ export async function startTestApi() {
       return { status: response.status, voted };
     }
 
+    /** Opens a magic link in this browser; the Widget on its Page follows it. */
+    async function tryFollowMagicLink(
+      link: string,
+      { page = routeSheet } = {},
+    ) {
+      const response = await followMagicLink({
+        link,
+        siteId: page.siteId,
+        browserToken: browserTokens.get(page.siteId),
+      });
+      if (response.status !== 200) return { status: response.status };
+      const followed = await response.json();
+      browserTokens.set(page.siteId, followed.browserToken);
+      return { status: response.status, followed };
+    }
+
     return {
       /** The browser's token for Recto Verso. */
       get browserToken() {
@@ -303,7 +363,8 @@ export async function startTestApi() {
         {
           page = routeSheet,
           replyTo,
-        }: { page?: WidgetPage; replyTo?: string } = {},
+          email,
+        }: { page?: WidgetPage; replyTo?: string; email?: string } = {},
       ) {
         const response = await postComment({
           page,
@@ -311,6 +372,7 @@ export async function startTestApi() {
           displayName,
           text,
           replyTo,
+          email,
         });
         if (response.status !== 201) {
           throw new Error(
@@ -320,6 +382,16 @@ export async function startTestApi() {
         const posted = await response.json();
         browserTokens.set(page.siteId, posted.browserToken);
         return posted;
+      },
+
+      tryFollowMagicLink,
+
+      async followMagicLink(link: string, { page = routeSheet } = {}) {
+        const { status, followed } = await tryFollowMagicLink(link, { page });
+        if (!followed) {
+          throw new Error(`Expected the magic link to work, got ${status}`);
+        }
+        return followed;
       },
 
       loadWidget({
@@ -340,10 +412,19 @@ export async function startTestApi() {
 
   return {
     client,
+    /** Runs the erasure the platform schedules every hour, as Cloudflare does in production. */
+    runHourlyErasure: () => core.eraseExpired(),
+    /**
+     * Whether any column of any table holds `text`. It names no table, so
+     * proving that something is gone survives changes to the schema.
+     */
+    databaseHolds: (text: string) => databaseHolds(db, text),
     loadWidget,
     putReaction,
     postComment,
     putVote,
+    magicLinkTo,
+    followMagicLink,
     newBrowser,
     clock,
     outbox,

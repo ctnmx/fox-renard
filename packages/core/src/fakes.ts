@@ -2,6 +2,7 @@
  * In-memory adapters for the ports that reach the outside world, so tests and
  * the local demo can drive and observe Fox Renard without real services.
  */
+import { magicLinkParameter } from "./core";
 import type {
   BotCheck,
   Clock,
@@ -28,10 +29,19 @@ export class ControllableClock implements Clock {
   }
 }
 
+/** The magic link an email's text carries, as its recipient would follow it. */
+export function magicLinkIn(text: string): string | null {
+  const link = new RegExp(`https?://\\S+#${magicLinkParameter}=\\S+`);
+  return link.exec(text)?.[0] ?? null;
+}
+
+/** Keeps every email it sends, until told to fail as an email service can. */
 export class EmailOutbox implements EmailSender {
   readonly sent: Email[] = [];
+  delivers = true;
 
   async send(email: Email): Promise<void> {
+    if (!this.delivers) throw new Error("The email service is unavailable.");
     this.sent.push(email);
   }
 }

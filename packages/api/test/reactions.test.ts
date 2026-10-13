@@ -45,6 +45,7 @@ describe("a Visitor reacts", () => {
 
     expect((await anna.loadWidget()).reaction).toEqual({
       optionId: optionId("Je le prépare"),
+      verified: false,
     });
     expect((await api.newBrowser().loadWidget()).reaction).toBeNull();
   });
@@ -63,7 +64,10 @@ describe("a Visitor reacts", () => {
       "Je l'ai fait !": 1,
     };
     expect(countsIn(changed)).toEqual(expected);
-    expect(changed.reaction).toEqual({ optionId: optionId("Je l'ai fait !") });
+    expect(changed.reaction).toEqual({
+      optionId: optionId("Je l'ai fait !"),
+      verified: false,
+    });
     expect(countsIn(await api.loadWidget())).toEqual(expected);
   });
 

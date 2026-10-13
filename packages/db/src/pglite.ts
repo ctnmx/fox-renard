@@ -27,3 +27,23 @@ export async function emptyDatabase(db: Database): Promise<void> {
     end $$
   `);
 }
+
+/** Whether any column of any table holds `text`, to prove that something is gone. */
+export async function databaseHolds(
+  db: Database,
+  text: string,
+): Promise<boolean> {
+  const tables = await db
+    .select({ name: sql<string>`tablename` })
+    .from(sql`pg_tables`)
+    .where(sql`schemaname = 'public'`);
+  for (const table of tables) {
+    const found = await db
+      .select({ found: sql`1` })
+      .from(sql`${sql.identifier(table.name)} as r`)
+      .where(sql`strpos(r::text, ${text}) > 0`)
+      .limit(1);
+    if (found.length > 0) return true;
+  }
+  return false;
+}

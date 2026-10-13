@@ -1,11 +1,12 @@
 import type {
+  CastVote,
   Comment,
   Commenter,
+  MagicLink,
   Page,
   Reaction,
   Site,
   Visitor,
-  Vote,
 } from "./model";
 
 /** Storage of domain data. */
@@ -29,7 +30,7 @@ export interface Store {
   setReaction(
     pageId: string,
     visitorId: string,
-    optionId: string | null,
+    reaction: Reaction | null,
   ): Promise<void>;
   /** The Commenter a Visitor's browser posts as, once it has posted. */
   findCommenter(visitorId: string): Promise<Commenter | null>;
@@ -40,9 +41,36 @@ export interface Store {
     displayName: string;
   }): Promise<Commenter>;
   renameCommenter(commenterId: string, displayName: string): Promise<void>;
+  createMagicLink(link: MagicLink): Promise<void>;
+  /** Deletes a Site's magic link and returns it, so that it works once only. */
+  takeMagicLink(siteId: string, tokenHash: string): Promise<MagicLink | null>;
+  /** How many of a Site's magic links to `email` still work at `at`. */
+  countMagicLinks(siteId: string, email: string, at: Date): Promise<number>;
+  /** Erases the magic links that expired at or before `cutoff`, emails with them. */
+  eraseMagicLinks(cutoff: Date): Promise<void>;
+  /** The Verified Commenter of a Site whose email this is. */
+  findVerifiedCommenter(
+    siteId: string,
+    email: string,
+  ): Promise<Commenter | null>;
+  /**
+   * Verifies a Guest's email and links the browser that followed the magic
+   * link to them, as `linkBrowser` does. That browser becomes their only one,
+   * and their other magic links stop working. Changes nothing, and answers
+   * `false`, once the Commenter is no longer a Guest.
+   */
+  verifyCommenter(
+    verification: BrowserLink & { email: string; at: Date },
+  ): Promise<boolean>;
+  /**
+   * Links a browser to a Verified Commenter. The Comments of the Guest it
+   * absorbs, if still a Guest, become theirs, and that Guest is no more.
+   */
+  linkBrowser(link: BrowserLink): Promise<void>;
   createComment(comment: {
     pageId: string;
     commenterId: string;
+    displayName: string;
     topLevelCommentId: string | null;
     text: string;
     createdAt: Date;
@@ -52,12 +80,12 @@ export interface Store {
   /** A Page's Comments and Replies, newest first. */
   listComments(pageId: string): Promise<Comment[]>;
   /** The Votes a Visitor holds on a Page's Comments and Replies, by Comment id. */
-  findVotes(pageId: string, visitorId: string): Promise<Map<string, Vote>>;
+  findVotes(pageId: string, visitorId: string): Promise<Map<string, CastVote>>;
   /** Sets a Visitor's one Vote on a Comment; `null` withdraws it. */
   setVote(
     commentId: string,
     visitorId: string,
-    vote: Vote | null,
+    vote: CastVote | null,
   ): Promise<void>;
   /** Remembers that a fingerprint and a Visitor did something on a Site. */
   recordRateLimitHit(hit: RateLimitHit): Promise<void>;
@@ -70,6 +98,14 @@ export interface Store {
   }): Promise<{ byFingerprint: number; byVisitor: number }>;
   /** Erases the hits made at or before `cutoff`, fingerprints with them. */
   eraseRateLimitHits(cutoff: Date): Promise<void>;
+}
+
+/** A browser to link to a Commenter, with the Guest whose Comments it brings. */
+export interface BrowserLink {
+  visitorId: string;
+  commenterId: string;
+  /** The Guest the browser posted as, if it brings their Comments. */
+  absorbedCommenterId: string | null;
 }
 
 /** What abuse limits count apart, each against limits of its own. */
@@ -90,6 +126,8 @@ export interface Clock {
 
 export interface Email {
   to: string;
+  /** The name the email is sent under; the platform chooses the address. */
+  senderName: string;
   subject: string;
   text: string;
 }

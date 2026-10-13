@@ -1,6 +1,8 @@
 import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
+import { magicLinkEmail } from "./emails";
 import type {
+  CastVote,
   Comment,
   Commenter,
   Page,
@@ -59,6 +61,16 @@ export interface CommentRequest extends PageRequest {
   text: string;
   /** The Comment this one Replies to, or `null` for a top-level Comment. */
   replyTo: string | null;
+  /** The email the Commenter gives to be sent a magic link, or `null`. */
+  email: string | null;
+}
+
+/** A browser following a magic link from the Page it opened on. */
+export interface MagicLinkRequest extends SiteRequest {
+  /** The token the browser holds for this Site, or `null` when it has none. */
+  browserToken: string | null;
+  /** The token the magic link carries. */
+  token: string;
 }
 
 export interface VoteRequest extends RateLimitedRequest {
@@ -84,7 +96,7 @@ interface ReactionsView {
 /** A Comment as Visitors read it. */
 export interface CommentView {
   id: string;
-  commenter: { displayName: string; initials: string };
+  commenter: { displayName: string; initials: string; verified: boolean };
   body: CommentSegment[];
   createdAt: Date;
   voteCounts: VoteCounts;
@@ -97,10 +109,13 @@ export interface TopLevelCommentView extends CommentView {
   replies: CommentView[];
 }
 
+/** The Commenter a browser posts as, as that browser sees them. */
+type CommenterView = Pick<Commenter, "displayName" | "verified">;
+
 /** What a Page shows a browser of its Comments. */
 interface CommentsView {
   /** The Commenter this browser posts as, so it never retypes its display name. */
-  commenter: Pick<Commenter, "displayName"> | null;
+  commenter: CommenterView | null;
   /** The order `comments` are listed in. */
   sort: CommentSort;
   comments: TopLevelCommentView[];
@@ -130,7 +145,10 @@ export type VoteResult =
       outcome: "voted";
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
-    } & Pick<CommentView, "voteCounts" | "vote">)
+    } & Pick<CommentView, "voteCounts" | "vote"> & {
+        /** Whether the browser's Vote counts as verified, as stored. */
+        verified: boolean;
+      })
   | SiteRefusal
   | { outcome: "page-not-found" }
   | { outcome: "comment-not-found" }
@@ -141,7 +159,9 @@ export type CommentResult =
       outcome: "posted";
       /** The browser's token for this Site, newly issued if it had none. */
       browserToken: string;
-      commenter: Pick<Commenter, "displayName">;
+      commenter: CommenterView;
+      /** Whether the email the browser gave was sent a magic link. */
+      magicLinkSent: boolean;
       comment: CommentView;
       /** The top-level Comment a posted Reply sits under, or `null` for a top-level Comment. */
       topLevelCommentId: string | null;
@@ -153,11 +173,31 @@ export type CommentResult =
   | { outcome: "empty-comment" }
   | { outcome: "comment-too-long" };
 
+export type MagicLinkResult =
+  | {
+      outcome: "followed";
+      /** The browser's token for this Site, newly issued if it had none. */
+      browserToken: string;
+      /** The Verified Commenter the browser is now linked to. */
+      commenter: CommenterView;
+    }
+  | SiteRefusal
+  | { outcome: "magic-link-invalid" };
+
 const maxPageTitleLength = 500;
 const maxDisplayNameLength = 50;
 const maxCommentLength = 5000;
 
 const hour = 60 * 60 * 1000;
+
+/** How long a magic link works, as its email tells. */
+const magicLinkLifetime = 1 * hour;
+
+/**
+ * How many magic links that still work an address may wait on per Site, so
+ * that nobody can flood a stranger's inbox under the Site's name.
+ */
+const maxWorkingMagicLinks = 3;
 
 /**
  * How long abuse limits remember a fingerprint or a browser. Erasing every
@@ -193,10 +233,10 @@ function shorten(text: string, maxLength: number): string {
  */
 function topLevelCommentViews(
   comments: Comment[],
-  votes: Map<string, Vote>,
+  votes: Map<string, CastVote>,
 ): TopLevelCommentView[] {
   const viewOf = (comment: Comment) =>
-    commentView(comment, votes.get(comment.id) ?? null);
+    commentView(comment, votes.get(comment.id)?.vote ?? null);
   const replies = new Map<string, CommentView[]>();
   for (const comment of comments.toReversed()) {
     const { topLevelCommentId } = comment;
@@ -248,15 +288,16 @@ function placeReply(
   }
   return {
     topLevelCommentId: answered.topLevelCommentId,
-    text: `@${answered.commenter.displayName} ${text}`,
+    text: `@${answered.displayName} ${text}`,
   };
 }
 
 function commentView(comment: Comment, vote: Vote | null): CommentView {
-  const { displayName } = comment.commenter;
+  const { displayName } = comment;
+  const { verified } = comment.commenter;
   return {
     id: comment.id,
-    commenter: { displayName, initials: initialsOf(displayName) },
+    commenter: { displayName, initials: initialsOf(displayName), verified },
     body: bodyOf(comment.text),
     createdAt: comment.createdAt,
     voteCounts: comment.voteCounts,
@@ -264,7 +305,34 @@ function commentView(comment: Comment, vote: Vote | null): CommentView {
   };
 }
 
-export function createCore({ store, clock, fingerprintSecret }: Ports) {
+function commenterView({ displayName, verified }: Commenter): CommenterView {
+  return { displayName, verified };
+}
+
+/**
+ * The fragment parameter that carries a magic link's token to the Widget. A
+ * fragment never reaches the Site's server, nor other sites as a referrer.
+ */
+export const magicLinkParameter = "fox-renard-magic-link";
+
+/**
+ * The address of a Page that also carries a magic link, for the Widget there
+ * to follow; `null` when the Page's address is off the Site's Allowed
+ * Domains, as a request that forged its Origin can make it.
+ */
+function magicLinkOf(site: Site, page: Page, token: string): string | null {
+  const url = new URL(page.url);
+  if (!site.allowedDomains.includes(url.hostname)) return null;
+  url.hash = new URLSearchParams({ [magicLinkParameter]: token }).toString();
+  return url.href;
+}
+
+export function createCore({
+  store,
+  clock,
+  email: emailSender,
+  fingerprintSecret,
+}: Ports) {
   async function allowedSite(
     request: SiteRequest,
   ): Promise<SiteRefusal | { outcome: "allowed"; site: Site }> {
@@ -359,6 +427,11 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     return admitted;
   }
 
+  /** A browser's Reactions and Votes count as verified once it is linked to a Verified Commenter. */
+  async function linkedToVerifiedCommenter(visitor: Visitor): Promise<boolean> {
+    return (await store.findCommenter(visitor.id))?.verified ?? false;
+  }
+
   async function reactionsView(
     site: Site,
     page: Page,
@@ -391,13 +464,14 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       visitor ? await store.findVotes(page.id, visitor.id) : new Map(),
     );
     return {
-      commenter: commenter && { displayName: commenter.displayName },
+      commenter: commenter && commenterView(commenter),
       sort,
       comments: sorted(newestFirst, sort),
     };
   }
 
-  // A browser posts as one Commenter, whose display name is the latest it gave.
+  // A browser posts as one Commenter, whose display name is the latest it
+  // gave, to prefill its form; each Comment keeps its own.
   async function commenterFor(
     site: Site,
     visitor: Visitor,
@@ -415,6 +489,50 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       await store.renameCommenter(commenter.id, displayName);
     }
     return { ...commenter, displayName };
+  }
+
+  /**
+   * Sends a Commenter a magic link to the Page they posted on, and tells
+   * whether it went out. The Comment stays published either way.
+   */
+  async function sendMagicLink({
+    site,
+    page,
+    visitor,
+    commenter,
+    displayName,
+    email,
+  }: {
+    site: Site;
+    page: Page;
+    visitor: Visitor;
+    commenter: Commenter;
+    displayName: string;
+    email: string;
+  }): Promise<boolean> {
+    const token = randomHex(32);
+    const link = magicLinkOf(site, page, token);
+    if (!link) return false;
+
+    // Addresses differing only in case reach one mailbox.
+    const to = email.toLowerCase();
+    const working = await store.countMagicLinks(site.id, to, clock.now());
+    if (working >= maxWorkingMagicLinks) return false;
+    await store.createMagicLink({
+      siteId: site.id,
+      tokenHash: await sha256Hex(token),
+      email: to,
+      visitorId: visitor.id,
+      commenterId: commenter.id,
+      expiresAt: new Date(clock.now().getTime() + magicLinkLifetime),
+    });
+    try {
+      await emailSender.send(magicLinkEmail({ site, to, displayName, link }));
+      return true;
+    } catch (error) {
+      console.error("Fox Renard: a magic link could not be sent.", error);
+      return false;
+    }
   }
 
   return {
@@ -487,18 +605,35 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       const { id } = await store.createComment({
         pageId: page.id,
         commenterId: commenter.id,
+        displayName,
         ...placed,
         createdAt,
       });
 
+      // A Verified Commenter's browser asks for no other email, so that
+      // nobody using it can move them to an address of their own.
+      const magicLinkSent =
+        request.email !== null &&
+        !commenter.verified &&
+        (await sendMagicLink({
+          site,
+          page,
+          visitor,
+          commenter,
+          displayName,
+          email: request.email,
+        }));
+
       return {
         outcome: "posted",
         browserToken,
-        commenter: { displayName },
+        commenter: commenterView(commenter),
+        magicLinkSent,
         comment: commentView(
           {
             id,
             commenter,
+            displayName,
             ...placed,
             createdAt,
             voteCounts: { up: 0, down: 0 },
@@ -506,6 +641,62 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
           null,
         ),
         topLevelCommentId: placed.topLevelCommentId,
+      };
+    },
+
+    /**
+     * Follows a magic link, which links the browser that follows it to the
+     * Site's Verified Commenter with that email. When the Site has none yet,
+     * the Commenter who asked for the link becomes that Verified Commenter.
+     */
+    async followMagicLink(request: MagicLinkRequest): Promise<MagicLinkResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      const { site } = allowed;
+
+      const link = await store.takeMagicLink(
+        site.id,
+        await sha256Hex(request.token),
+      );
+      if (!link || link.expiresAt <= clock.now()) {
+        return { outcome: "magic-link-invalid" };
+      }
+
+      const { visitor, browserToken } =
+        (await recognize(site, request.browserToken)) ??
+        (await issueBrowserToken(site));
+      // The browser that follows the link brings the Comments it posted as a
+      // Guest. Only the inbox's owner follows it, so no other browser's
+      // Comments ever move, even those of the browser that asked.
+      const followerCommenter = await store.findCommenter(visitor.id);
+      const linking = (commenterId: string) => ({
+        visitorId: visitor.id,
+        commenterId,
+        absorbedCommenterId:
+          followerCommenter &&
+          !followerCommenter.verified &&
+          followerCommenter.id !== commenterId
+            ? followerCommenter.id
+            : null,
+      });
+      const verified = await store.findVerifiedCommenter(site.id, link.email);
+      if (verified) {
+        await store.linkBrowser(linking(verified.id));
+      } else {
+        const verifiedNow = await store.verifyCommenter({
+          ...linking(link.commenterId),
+          email: link.email,
+          at: clock.now(),
+        });
+        if (!verifiedNow) return { outcome: "magic-link-invalid" };
+      }
+      const commenter = await store.findCommenter(visitor.id);
+      if (!commenter) return { outcome: "magic-link-invalid" };
+
+      return {
+        outcome: "followed",
+        browserToken,
+        commenter: commenterView(commenter),
       };
     },
 
@@ -523,16 +714,26 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       const admitted = await admit(site, "vote", request);
       if (!admitted) return { outcome: "rate-limited" };
       const { visitor, browserToken } = admitted;
-      await store.setVote(comment.id, visitor.id, request.vote);
+      await store.setVote(
+        comment.id,
+        visitor.id,
+        request.vote === null
+          ? null
+          : {
+              vote: request.vote,
+              verified: await linkedToVerifiedCommenter(visitor),
+            },
+      );
 
       const voted = await store.findComment(page.id, comment.id);
       if (!voted) return { outcome: "comment-not-found" };
-      const votes = await store.findVotes(page.id, visitor.id);
+      const cast = (await store.findVotes(page.id, visitor.id)).get(comment.id);
       return {
         outcome: "voted",
         browserToken,
         voteCounts: voted.voteCounts,
-        vote: votes.get(comment.id) ?? null,
+        vote: cast?.vote ?? null,
+        verified: cast?.verified ?? false,
       };
     },
 
@@ -559,7 +760,13 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
       const admitted = await admit(site, "reaction", request);
       if (!admitted) return { outcome: "rate-limited" };
       const { visitor, browserToken } = admitted;
-      await store.setReaction(page.id, visitor.id, optionId);
+      await store.setReaction(
+        page.id,
+        visitor.id,
+        optionId === null
+          ? null
+          : { optionId, verified: await linkedToVerifiedCommenter(visitor) },
+      );
 
       return {
         outcome: "reacted",
@@ -569,11 +776,15 @@ export function createCore({ store, clock, fingerprintSecret }: Ports) {
     },
 
     /**
-     * Erases what abuse limits no longer remember, fingerprints included.
-     * The platform runs it every hour, since reacting and voting erase only
-     * when someone reacts or votes (ADR-0006).
+     * Erases what abuse limits no longer remember, fingerprints included,
+     * and expired magic links, with the emails nobody verified. The platform
+     * runs it every hour, since reacting and voting erase only when someone
+     * reacts or votes (ADR-0006).
      */
-    eraseExpiredFingerprints,
+    async eraseExpired(): Promise<void> {
+      await eraseExpiredFingerprints();
+      await store.eraseMagicLinks(clock.now());
+    },
   };
 }
 

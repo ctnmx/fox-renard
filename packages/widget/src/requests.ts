@@ -99,10 +99,39 @@ export class Refused extends Error {
   }
 }
 
-/** Posts a Comment, or a Reply to the Comment `replyTo` names. */
+/**
+ * Follows the magic link the page was opened from, which links the browser
+ * to the Site's Verified Commenter with that email.
+ */
+export async function followMagicLink(
+  { client, siteId }: PageConnection,
+  token: string,
+) {
+  const response = await client.v1.sites[":siteId"].verifications.$post({
+    param: { siteId },
+    header: authorization(siteId),
+    json: { token },
+  });
+  if (response.status !== 200) {
+    throw new Refused((await response.json()).error);
+  }
+  const followed = await response.json();
+  keepBrowserToken(siteId, followed.browserToken);
+  return followed;
+}
+
+/**
+ * Posts a Comment, or a Reply to the Comment `replyTo` names. An email asks
+ * for a magic link to verify it.
+ */
 export async function postComment(
   page: PageConnection,
-  comment: { displayName: string; text: string; replyTo?: string },
+  comment: {
+    displayName: string;
+    text: string;
+    replyTo?: string;
+    email?: string;
+  },
 ) {
   const { endpoints, param, header } = pageRequest(page);
   const response = await endpoints.comments.$post({

@@ -23,18 +23,20 @@ export async function startDemo(): Promise<void> {
   const db = await createPgliteDatabase();
   await seed(db, { memberEmail: "membre@example.com" });
 
+  const outbox = new EmailOutbox();
   const core = createCore({
     store: createStore(db),
     clock: { now: () => new Date() },
-    email: new EmailOutbox(),
+    email: outbox,
     photos: new InMemoryPhotoStore(),
     botCheck: new StubBotCheck(),
     fingerprintSecret: new FixedFingerprintSecret(),
   });
 
-  // Like the platform in production, erase expired fingerprints every hour (ADR-0006).
+  // Like the platform in production, erase what has expired every hour:
+  // fingerprints (ADR-0006) and magic links with their emails.
   setInterval(
-    () => core.eraseExpiredFingerprints().catch(console.error),
+    () => core.eraseExpired().catch(console.error),
     60 * 60 * 1000,
   ).unref();
 
@@ -48,6 +50,8 @@ export async function startDemo(): Promise<void> {
         "Content-Type": "text/javascript; charset=utf-8",
       }),
     )
+    // The emails Fox Renard sent, so that Seam 2 can follow a magic link.
+    .get("/outbox", (c) => c.json(outbox.sent))
     .route("/", createApp(core, { getConnInfo }));
 
   const siteFolder = new URL("../site/", import.meta.url);

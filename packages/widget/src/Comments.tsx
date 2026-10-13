@@ -147,6 +147,16 @@ function CommentArticle({
       <div class="comment-main">
         <p class="comment-meta">
           <span class="display-name">{comment.commenter.displayName}</span>
+          {comment.commenter.verified && (
+            <span
+              class="verified"
+              role="img"
+              aria-label={t("verified")}
+              title={t("verified")}
+            >
+              ✓
+            </span>
+          )}
           <time
             dateTime={comment.createdAt}
             title={new Date(comment.createdAt).toLocaleString(locale)}
@@ -170,10 +180,16 @@ function CommentArticle({
   );
 }
 
+/** Posted, with the email given to be sent a magic link, if any. */
+type OnPosted = (posted: Posted, email: string | undefined) => void;
+
 function CommentForm({
   page,
   displayName,
   onDisplayName,
+  email,
+  onEmail,
+  asksEmail,
   answering,
   onPosted,
   onCancel,
@@ -182,15 +198,21 @@ function CommentForm({
   /** Shared by every form, so the Visitor types it once. */
   displayName: string;
   onDisplayName: (displayName: string) => void;
+  /** Shared by every form, like the display name. */
+  email: string;
+  onEmail: (email: string) => void;
+  /** Whether the form offers to verify an email: not to a Verified Commenter. */
+  asksEmail: boolean;
   /** The Comment this form Replies to, or none for a top-level Comment. */
   answering?: Comment;
-  onPosted: (posted: Posted) => void;
+  onPosted: OnPosted;
   onCancel?: () => void;
 }) {
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
   const [failure, setFailure] = useState<MessageKey>();
   const headingId = useId();
+  const emailHintId = useId();
   const displayNameInput = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
 
@@ -209,8 +231,15 @@ function CommentForm({
     setPosting(true);
     setFailure(undefined);
     try {
+      const given = (asksEmail && email.trim()) || undefined;
       onPosted(
-        await postComment(page, { displayName, text, replyTo: answering?.id }),
+        await postComment(page, {
+          displayName,
+          text,
+          replyTo: answering?.id,
+          email: given,
+        }),
+        given,
       );
       setText("");
     } catch (error) {
@@ -246,6 +275,26 @@ function CommentForm({
           onInput={(event) => onDisplayName(event.currentTarget.value)}
         />
       </label>
+      {asksEmail && (
+        <>
+          <label class="field">
+            <span class="field-label">{t("email")}</span>
+            <input
+              class="input"
+              type="email"
+              name="email"
+              autocomplete="email"
+              maxLength={254}
+              aria-describedby={emailHintId}
+              value={email}
+              onInput={(event) => onEmail(event.currentTarget.value)}
+            />
+          </label>
+          <p class="field-hint" id={emailHintId}>
+            {t("emailHint")}
+          </p>
+        </>
+      )}
       <textarea
         ref={textBox}
         class="input comment-box"
@@ -302,7 +351,22 @@ export function Comments({
 }) {
   // The browser's Commenter fills in the display name, so it is typed once.
   const [displayName, setDisplayName] = useState(commenter?.displayName ?? "");
+  const [email, setEmail] = useState("");
+  // What became of the magic link the latest Comment asked for.
+  const [magicLinkNotice, setMagicLinkNotice] = useState<string>();
   const [answering, setAnswering] = useState<Answering>();
+  const asksEmail = !commenter?.verified;
+
+  const afterPosting: OnPosted = (posted, email) => {
+    onPosted(posted);
+    if (email === undefined) return;
+    setMagicLinkNotice(
+      posted.magicLinkSent
+        ? t("magicLinkSent", { email })
+        : t("magicLinkNotSent"),
+    );
+    setEmail("");
+  };
 
   function stopAnswering() {
     answering?.opener.focus();
@@ -316,8 +380,16 @@ export function Comments({
         page={page}
         displayName={displayName}
         onDisplayName={setDisplayName}
-        onPosted={onPosted}
+        email={email}
+        onEmail={setEmail}
+        asksEmail={asksEmail}
+        onPosted={afterPosting}
       />
+      {magicLinkNotice && (
+        <p class="notice" role="status">
+          {magicLinkNotice}
+        </p>
+      )}
       {comments.length > 1 && (
         <label class="sort">
           {t("sortBy")}
@@ -375,9 +447,12 @@ export function Comments({
                   page={page}
                   displayName={displayName}
                   onDisplayName={setDisplayName}
+                  email={email}
+                  onEmail={setEmail}
+                  asksEmail={asksEmail}
                   answering={answering.comment}
-                  onPosted={(posted) => {
-                    onPosted(posted);
+                  onPosted={(reply, email) => {
+                    afterPosting(reply, email);
                     stopAnswering();
                   }}
                   onCancel={stopAnswering}

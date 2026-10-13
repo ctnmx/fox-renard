@@ -48,6 +48,7 @@ const refusals = {
   "invalid-display-name": 422,
   "empty-comment": 422,
   "comment-too-long": 422,
+  "magic-link-invalid": 410,
   "rate-limited": 429,
 } as const;
 
@@ -143,12 +144,13 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           displayName: z.string().max(1000),
           text: z.string().max(20_000),
           replyTo: z.uuid().optional(),
+          email: z.email().max(254).optional(),
         }),
       ),
       async (c) => {
         const { siteId, pageKey } = c.req.valid("param");
         const { authorization: browserToken } = c.req.valid("header");
-        const { displayName, text, replyTo } = c.req.valid("json");
+        const { displayName, text, replyTo, email } = c.req.valid("json");
 
         const result = await core.postComment({
           siteId,
@@ -158,17 +160,42 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           displayName,
           text,
           replyTo: replyTo ?? null,
+          email: email ?? null,
         });
         if (result.outcome !== "posted") return refuse(c, result.outcome);
-        const { commenter, comment, topLevelCommentId } = result;
+        const { commenter, magicLinkSent, comment, topLevelCommentId } = result;
         return c.json(
           {
             browserToken: result.browserToken,
             commenter,
+            magicLinkSent,
             comment,
             topLevelCommentId,
           },
           201,
+        );
+      },
+    )
+    .post(
+      "/v1/sites/:siteId/verifications",
+      validate("param", z.object({ siteId: z.uuid() })),
+      validate("header", browserTokenHeader),
+      validate("json", z.object({ token: z.string().max(128) })),
+      async (c) => {
+        const { siteId } = c.req.valid("param");
+        const { authorization: browserToken } = c.req.valid("header");
+        const { token } = c.req.valid("json");
+
+        const result = await core.followMagicLink({
+          siteId,
+          domain: requestingDomain(c.req.header("Origin")),
+          browserToken: browserToken ?? null,
+          token,
+        });
+        if (result.outcome !== "followed") return refuse(c, result.outcome);
+        return c.json(
+          { browserToken: result.browserToken, commenter: result.commenter },
+          200,
         );
       },
     )
@@ -197,6 +224,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
             browserToken: result.browserToken,
             voteCounts: result.voteCounts,
             vote: result.vote,
+            verified: result.verified,
           },
           200,
         );

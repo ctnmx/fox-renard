@@ -1,9 +1,22 @@
-import type { Page, Store, Vote } from "@fox-renard/core";
-import { and, count, desc, eq, lte, or, type SQL, sql } from "drizzle-orm";
+import type { BrowserLink, Page, Store, Vote } from "@fox-renard/core";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { Database } from "./database";
 import {
   commenters,
   comments,
+  magicLinks,
   pages,
   rateLimitHits,
   reactions,
@@ -11,7 +24,43 @@ import {
   votes,
 } from "./schema";
 
+/** Links a browser to a Commenter, bringing the Comments of a Guest that is still one. */
+async function linkBrowser(
+  db: Database,
+  { visitorId, commenterId, absorbedCommenterId }: BrowserLink,
+): Promise<void> {
+  if (absorbedCommenterId) {
+    const [guest] = await db
+      .select({ id: commenters.id })
+      .from(commenters)
+      .where(
+        and(
+          eq(commenters.id, absorbedCommenterId),
+          isNull(commenters.verifiedAt),
+        ),
+      )
+      .for("update");
+    if (guest) {
+      await db
+        .update(comments)
+        .set({ commenterId })
+        .where(eq(comments.commenterId, guest.id));
+      await db.delete(commenters).where(eq(commenters.id, guest.id));
+    }
+  }
+  await db
+    .update(visitors)
+    .set({ commenterId })
+    .where(eq(visitors.id, visitorId));
+}
+
 export function createStore(db: Database): Store {
+  const commenterColumns = {
+    id: commenters.id,
+    displayName: commenters.displayName,
+    verified: isNotNull(commenters.verifiedAt).mapWith(Boolean),
+  };
+
   const pageColumns = {
     id: pages.id,
     key: pages.key,
@@ -40,8 +89,9 @@ export function createStore(db: Database): Store {
         id: comments.id,
         commenter: {
           id: commenters.id,
-          displayName: commenters.displayName,
+          verified: commenterColumns.verified,
         },
+        displayName: comments.displayName,
         topLevelCommentId: comments.topLevelCommentId,
         text: comments.text,
         createdAt: comments.createdAt,
@@ -64,7 +114,7 @@ export function createStore(db: Database): Store {
   return {
     async findSite(siteId) {
       const site = await db.query.sites.findFirst({
-        columns: { id: true },
+        columns: { id: true, name: true },
         where: (sites, { eq }) => eq(sites.id, siteId),
         with: {
           allowedDomains: { columns: { domain: true } },
@@ -82,6 +132,7 @@ export function createStore(db: Database): Store {
 
       return {
         id: site.id,
+        name: site.name,
         allowedDomains: site.allowedDomains.map(({ domain }) => domain),
         reactionSet: {
           prompt: site.reactionSet.prompt,
@@ -136,7 +187,10 @@ export function createStore(db: Database): Store {
         .groupBy(reactions.optionId);
       const [reaction] = visitorId
         ? await db
-            .select({ optionId: reactions.optionId })
+            .select({
+              optionId: reactions.optionId,
+              verified: reactions.verified,
+            })
             .from(reactions)
             .where(
               and(
@@ -151,12 +205,12 @@ export function createStore(db: Database): Store {
       };
     },
 
-    async setReaction(pageId, visitorId, optionId) {
+    async setReaction(pageId, visitorId, reaction) {
       const ofVisitorOnPage = and(
         eq(reactions.pageId, pageId),
         eq(reactions.visitorId, visitorId),
       );
-      if (optionId === null) {
+      if (reaction === null) {
         await db.delete(reactions).where(ofVisitorOnPage);
         return;
       }
@@ -164,16 +218,16 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(reactions)
-        .values({ pageId, visitorId, optionId })
+        .values({ pageId, visitorId, ...reaction })
         .onConflictDoUpdate({
           target: [reactions.pageId, reactions.visitorId],
-          set: { optionId },
+          set: reaction,
         });
     },
 
     async findCommenter(visitorId) {
       const [commenter] = await db
-        .select({ id: commenters.id, displayName: commenters.displayName })
+        .select(commenterColumns)
         .from(visitors)
         .innerJoin(commenters, eq(commenters.id, visitors.commenterId))
         .where(eq(visitors.id, visitorId));
@@ -185,10 +239,7 @@ export function createStore(db: Database): Store {
         const [commenter] = await tx
           .insert(commenters)
           .values({ siteId, displayName })
-          .returning({
-            id: commenters.id,
-            displayName: commenters.displayName,
-          });
+          .returning(commenterColumns);
         if (!commenter) throw new Error("The Commenter could not be created");
         await tx
           .update(visitors)
@@ -203,6 +254,84 @@ export function createStore(db: Database): Store {
         .update(commenters)
         .set({ displayName })
         .where(eq(commenters.id, commenterId));
+    },
+
+    async createMagicLink(link) {
+      await db.insert(magicLinks).values(link);
+    },
+
+    async takeMagicLink(siteId, tokenHash) {
+      const [link] = await db
+        .delete(magicLinks)
+        .where(
+          and(
+            eq(magicLinks.siteId, siteId),
+            eq(magicLinks.tokenHash, tokenHash),
+          ),
+        )
+        .returning();
+      return link ?? null;
+    },
+
+    async findVerifiedCommenter(siteId, email) {
+      const [commenter] = await db
+        .select(commenterColumns)
+        .from(commenters)
+        .where(
+          and(
+            eq(commenters.siteId, siteId),
+            eq(commenters.email, email),
+            isNotNull(commenters.verifiedAt),
+          ),
+        );
+      return commenter ?? null;
+    },
+
+    async countMagicLinks(siteId, email, at) {
+      const [working] = await db
+        .select({ count: count() })
+        .from(magicLinks)
+        .where(
+          and(
+            eq(magicLinks.siteId, siteId),
+            eq(magicLinks.email, email),
+            gt(magicLinks.expiresAt, at),
+          ),
+        );
+      return working?.count ?? 0;
+    },
+
+    async eraseMagicLinks(cutoff) {
+      await db.delete(magicLinks).where(lte(magicLinks.expiresAt, cutoff));
+    },
+
+    async verifyCommenter({ email, at, ...link }) {
+      return db.transaction(async (tx) => {
+        // A magic link asked for before its Commenter was verified another
+        // way must not verify them again.
+        const [guest] = await tx
+          .update(commenters)
+          .set({ email, verifiedAt: at })
+          .where(
+            and(
+              eq(commenters.id, link.commenterId),
+              isNull(commenters.verifiedAt),
+            ),
+          )
+          .returning({ id: commenters.id });
+        if (!guest) return false;
+        await tx
+          .update(visitors)
+          .set({ commenterId: null })
+          .where(eq(visitors.commenterId, guest.id));
+        await tx.delete(magicLinks).where(eq(magicLinks.commenterId, guest.id));
+        await linkBrowser(tx, link);
+        return true;
+      });
+    },
+
+    async linkBrowser(link) {
+      await db.transaction((tx) => linkBrowser(tx, link));
     },
 
     async createComment(comment) {
@@ -229,21 +358,27 @@ export function createStore(db: Database): Store {
 
     async findVotes(pageId, visitorId) {
       const held = await db
-        .select({ commentId: votes.commentId, vote: votes.direction })
+        .select({
+          commentId: votes.commentId,
+          vote: votes.direction,
+          verified: votes.verified,
+        })
         .from(votes)
         .innerJoin(comments, eq(comments.id, votes.commentId))
         .where(
           and(eq(comments.pageId, pageId), eq(votes.visitorId, visitorId)),
         );
-      return new Map(held.map(({ commentId, vote }) => [commentId, vote]));
+      return new Map(
+        held.map(({ commentId, ...cast }) => [commentId, cast] as const),
+      );
     },
 
-    async setVote(commentId, visitorId, vote) {
+    async setVote(commentId, visitorId, cast) {
       const ofVisitorOnComment = and(
         eq(votes.commentId, commentId),
         eq(votes.visitorId, visitorId),
       );
-      if (vote === null) {
+      if (cast === null) {
         await db.delete(votes).where(ofVisitorOnComment);
         return;
       }
@@ -251,10 +386,15 @@ export function createStore(db: Database): Store {
       // two requests from one browser race.
       await db
         .insert(votes)
-        .values({ commentId, visitorId, direction: vote })
+        .values({
+          commentId,
+          visitorId,
+          direction: cast.vote,
+          verified: cast.verified,
+        })
         .onConflictDoUpdate({
           target: [votes.commentId, votes.visitorId],
-          set: { direction: vote },
+          set: { direction: cast.vote, verified: cast.verified },
         });
     },
 

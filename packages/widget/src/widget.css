@@ -138,6 +138,50 @@
   outline-offset: 2px;
 }
 
+.field-hint {
+  margin: -4px 0 0;
+  color: #6b6b6b;
+  font-size: 13px;
+}
+
+.notice {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #e6f2ea;
+  color: #1d6f42;
+  font-size: 14px;
+  text-align: start;
+}
+
+.confirm-email {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #1d6f42;
+  border-radius: 8px;
+  text-align: start;
+}
+
+.confirm-email-prompt {
+  margin: 0;
+  font-size: 14px;
+}
+
+.comment-form + .notice {
+  margin: 8px 0 0;
+}
+
+.verified {
+  margin-inline-start: 4px;
+  color: #1d6f42;
+  font-weight: 700;
+}
+
 .form-error {
   margin: 0;
   color: #a4262c;

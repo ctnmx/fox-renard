@@ -25,7 +25,11 @@ describe("a Guest posts a Comment", () => {
     expect((await api.loadWidget()).comments).toEqual([
       {
         id: expect.any(String),
-        commenter: { displayName: "Marie Dupont", initials: "MD" },
+        commenter: {
+          displayName: "Marie Dupont",
+          initials: "MD",
+          verified: false,
+        },
         body: [{ type: "text", text: "Superbe boucle, faite en juin." }],
         createdAt: api.clock.now().toISOString(),
         voteCounts: { up: 0, down: 0 },
@@ -42,11 +46,12 @@ describe("a Guest posts a Comment", () => {
 
     expect((await marie.loadWidget()).commenter).toEqual({
       displayName: "Marie Dupont",
+      verified: false,
     });
     expect((await api.newBrowser().loadWidget()).commenter).toBeNull();
   });
 
-  test("a browser keeps posting as one Commenter, whose display name is the latest it gave", async () => {
+  test("a new display name prefills the browser's form, and each Comment keeps the one it was posted under", async () => {
     await api.loadWidget();
     const marie = api.newBrowser();
     await marie.post("Marie", "Faite en juin.");
@@ -55,10 +60,10 @@ describe("a Guest posts a Comment", () => {
     await marie.post("Marie D.", "Et refaite en septembre.");
 
     const { comments, commenter } = await marie.loadWidget();
-    expect(commenter).toEqual({ displayName: "Marie D." });
+    expect(commenter).toEqual({ displayName: "Marie D.", verified: false });
     expect(comments.map((comment) => comment.commenter)).toEqual([
-      { displayName: "Marie D.", initials: "MD" },
-      { displayName: "Marie D.", initials: "MD" },
+      { displayName: "Marie D.", initials: "MD", verified: false },
+      { displayName: "Marie", initials: "M", verified: false },
     ]);
   });
 
@@ -72,9 +77,12 @@ describe("a Guest posts a Comment", () => {
     await marie.post("Marie D.", "À refaire à vélo.", { page: veloSheet });
 
     const onRectoVerso = await marie.loadWidget();
-    expect(onRectoVerso.commenter).toEqual({ displayName: "Marie" });
+    expect(onRectoVerso.commenter).toEqual({
+      displayName: "Marie",
+      verified: false,
+    });
     expect(onRectoVerso.comments.map(({ commenter }) => commenter)).toEqual([
-      { displayName: "Marie", initials: "M" },
+      { displayName: "Marie", initials: "M", verified: false },
     ]);
   });
 
