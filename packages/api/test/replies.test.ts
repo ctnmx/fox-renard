@@ -41,6 +41,7 @@ describe("a Commenter Replies to a Comment", () => {
       createdAt: api.clock.now().toISOString(),
       voteCounts: { up: 0, down: 0 },
       vote: null,
+      pending: false,
     };
     expect(reply.comment).toEqual(listedReply);
     expect(reply.topLevelCommentId).toBe(comment.id);

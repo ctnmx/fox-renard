@@ -157,11 +157,11 @@ describe("a magic link works once, for an hour", () => {
     await marie.post("Marie", "Superbe boucle.", {
       email: "marie@example.com",
     });
-    await paul.post("Paul", "Faite en mai.", { email: "paul@example.com" });
-
     api.clock.advance(hour - 1);
     await marie.followMagicLink(api.magicLinkTo("marie@example.com"));
-    api.clock.advance(1);
+
+    await paul.post("Paul", "Faite en mai.", { email: "paul@example.com" });
+    api.clock.advance(hour);
     const expired = await paul.tryFollowMagicLink(
       api.magicLinkTo("paul@example.com"),
     );

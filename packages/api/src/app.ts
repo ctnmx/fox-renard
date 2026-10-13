@@ -43,6 +43,8 @@ const refusals = {
   "site-not-found": 404,
   "domain-not-allowed": 403,
   "page-not-found": 404,
+  "bot-check-failed": 403,
+  "posted-too-soon": 422,
   "comment-not-found": 404,
   "reaction-option-not-found": 422,
   "invalid-display-name": 422,
@@ -141,6 +143,8 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
       validate(
         "json",
         z.object({
+          botCheck: z.string().max(10_000),
+          honeypot: z.string().max(1000).optional(),
           displayName: z.string().max(1000),
           text: z.string().max(20_000),
           replyTo: z.uuid().optional(),
@@ -150,13 +154,17 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
       async (c) => {
         const { siteId, pageKey } = c.req.valid("param");
         const { authorization: browserToken } = c.req.valid("header");
-        const { displayName, text, replyTo, email } = c.req.valid("json");
+        const { botCheck, honeypot, displayName, text, replyTo, email } =
+          c.req.valid("json");
 
         const result = await core.postComment({
           siteId,
           domain: requestingDomain(c.req.header("Origin")),
           pageKey,
           browserToken: browserToken ?? null,
+          clientIp: getConnInfo(c).remote.address ?? null,
+          botCheck,
+          honeypot: honeypot ?? "",
           displayName,
           text,
           replyTo: replyTo ?? null,
@@ -174,6 +182,21 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           },
           201,
         );
+      },
+    )
+    .get(
+      "/v1/sites/:siteId/bot-challenge",
+      validate("param", z.object({ siteId: z.uuid() })),
+      async (c) => {
+        const result = await core.issueBotChallenge({
+          siteId: c.req.valid("param").siteId,
+          domain: requestingDomain(c.req.header("Origin")),
+        });
+        if (result.outcome !== "issued") return refuse(c, result.outcome);
+        // Each challenge is solved once only.
+        c.header("Cache-Control", "no-store");
+        const { challenge, postableIn } = result;
+        return c.json({ challenge, postableIn }, 200);
       },
     )
     .post(

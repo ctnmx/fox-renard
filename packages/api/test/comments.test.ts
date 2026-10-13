@@ -34,6 +34,7 @@ describe("a Guest posts a Comment", () => {
         createdAt: api.clock.now().toISOString(),
         voteCounts: { up: 0, down: 0 },
         vote: null,
+        pending: false,
         replies: [],
       },
     ]);
@@ -102,17 +103,17 @@ describe("a Guest posts a Comment", () => {
 });
 
 describe("a Comment is plain text", () => {
+  // A Guest's Comment with a link is Pending, so its author's browser reads it.
   test("its line breaks and HTML stay as written, and its URLs become links", async () => {
     await api.loadWidget();
+    const marie = api.newBrowser();
 
-    await api
-      .newBrowser()
-      .post(
-        "Marie",
-        "Trace ici : https://www.rectoverso.co/traces/aiguille.gpx.\n<b>Pas de balisage</b> (voir https://fr.wikipedia.org/wiki/Mont_Aiguille_(Vercors)).",
-      );
+    await marie.post(
+      "Marie",
+      "Trace ici : https://www.rectoverso.co/traces/aiguille.gpx.\n<b>Pas de balisage</b> (voir https://fr.wikipedia.org/wiki/Mont_Aiguille_(Vercors)).",
+    );
 
-    expect(bodiesOf((await api.loadWidget()).comments)).toEqual([
+    expect(bodiesOf((await marie.loadWidget()).comments)).toEqual([
       [
         { type: "text", text: "Trace ici : " },
         {
@@ -134,9 +135,11 @@ describe("a Comment is plain text", () => {
   test("a web address starting with www. becomes a link too, shown as written", async () => {
     await api.loadWidget();
 
-    await api.newBrowser().post("Marie", "Cartes sur www.ign.fr, pas sur www.");
+    const marie = api.newBrowser();
 
-    expect(bodiesOf((await api.loadWidget()).comments)).toEqual([
+    await marie.post("Marie", "Cartes sur www.ign.fr, pas sur www.");
+
+    expect(bodiesOf((await marie.loadWidget()).comments)).toEqual([
       [
         { type: "text", text: "Cartes sur " },
         { type: "link", url: "https://www.ign.fr", text: "www.ign.fr" },

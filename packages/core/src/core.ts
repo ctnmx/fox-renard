@@ -5,6 +5,7 @@ import type {
   CastVote,
   Comment,
   Commenter,
+  CommentStatus,
   Page,
   Reaction,
   ReactionOption,
@@ -14,7 +15,7 @@ import type {
   VoteCounts,
 } from "./model";
 import { networkOf } from "./network";
-import type { Ports, RateLimitedAction } from "./ports";
+import type { BotChallenge, Ports, RateLimitedAction } from "./ports";
 
 /** Where a public request comes from: a Site, and the domain of the page on it. */
 interface SiteRequest {
@@ -56,7 +57,11 @@ export interface ReactionRequest extends RateLimitedRequest {
   optionId: string | null;
 }
 
-export interface CommentRequest extends PageRequest {
+export interface CommentRequest extends RateLimitedRequest {
+  /** The browser's solution to a bot check's challenge. */
+  botCheck: string;
+  /** The field the Widget hides from people, so that only a bot fills it in. */
+  honeypot: string;
   displayName: string;
   text: string;
   /** The Comment this one Replies to, or `null` for a top-level Comment. */
@@ -102,6 +107,8 @@ export interface CommentView {
   voteCounts: VoteCounts;
   /** The Vote this browser holds on the Comment. */
   vote: Vote | null;
+  /** Whether it awaits a Member's approval, which only its author's browsers see. */
+  pending: boolean;
 }
 
 /** A top-level Comment as Visitors read it, with its Replies oldest first. */
@@ -168,10 +175,22 @@ export type CommentResult =
     }
   | SiteRefusal
   | { outcome: "page-not-found" }
+  | { outcome: "bot-check-failed" }
+  | { outcome: "posted-too-soon" }
   | { outcome: "comment-not-found" }
   | { outcome: "invalid-display-name" }
   | { outcome: "empty-comment" }
-  | { outcome: "comment-too-long" };
+  | { outcome: "comment-too-long" }
+  | { outcome: "rate-limited" };
+
+export type BotChallengeResult =
+  | {
+      outcome: "issued";
+      challenge: BotChallenge;
+      /** How many milliseconds from now its solution may post a Comment. */
+      postableIn: number;
+    }
+  | SiteRefusal;
 
 export type MagicLinkResult =
   | {
@@ -200,15 +219,25 @@ const magicLinkLifetime = 1 * hour;
 const maxWorkingMagicLinks = 3;
 
 /**
+ * How long after its bot check's challenge a Comment may post. Anyone typing
+ * takes longer, while a bot posts at once.
+ */
+const minTimeToPost = 3_000;
+
+/** How long a bot check's challenge works after it was issued. */
+const botChallengeLifetime = 30 * 60 * 1000;
+
+/**
  * How long abuse limits remember a fingerprint or a browser. Erasing every
  * hour then keeps nothing past 24 hours (ADR-0006).
  */
 const rateLimitMemory = 23 * hour;
 
 /**
- * How many Reactions, and how many Votes, changes and removals included, a
- * browser and the network it acts from may make while they are remembered.
- * A network can hold several Visitors, such as a household or an office.
+ * How many Reactions, how many Votes, changes and removals included, and how
+ * many Comments, Replies included, a browser and the network it acts from may
+ * make while they are remembered. A network can hold several Visitors, such
+ * as a household or an office.
  */
 const rateLimits: Record<
   RateLimitedAction,
@@ -216,6 +245,7 @@ const rateLimits: Record<
 > = {
   reaction: { perBrowser: 50, perFingerprint: 100 },
   vote: { perBrowser: 50, perFingerprint: 100 },
+  comment: { perBrowser: 10, perFingerprint: 20 },
 };
 
 // Lengths count code points, so an emoji counts once and is never cut in half.
@@ -302,6 +332,7 @@ function commentView(comment: Comment, vote: Vote | null): CommentView {
     createdAt: comment.createdAt,
     voteCounts: comment.voteCounts,
     vote,
+    pending: comment.status === "pending",
   };
 }
 
@@ -331,6 +362,7 @@ export function createCore({
   store,
   clock,
   email: emailSender,
+  botCheck,
   fingerprintSecret,
 }: Ports) {
   async function allowedSite(
@@ -459,8 +491,14 @@ export function createCore({
     sort: CommentSort,
   ): Promise<CommentsView> {
     const commenter = visitor && (await store.findCommenter(visitor.id));
+    // A Pending Comment shows to its author's browsers only.
+    const listed = (await store.listComments(page.id)).filter(
+      (comment) =>
+        comment.status === "published" ||
+        comment.commenter.id === commenter?.id,
+    );
     const newestFirst = topLevelCommentViews(
-      await store.listComments(page.id),
+      listed,
       visitor ? await store.findVotes(page.id, visitor.id) : new Map(),
     );
     return {
@@ -571,6 +609,15 @@ export function createCore({
       const page = await store.findPage(site.id, request.pageKey);
       if (!page) return { outcome: "page-not-found" };
 
+      if (request.honeypot) return { outcome: "bot-check-failed" };
+      const solved = await botCheck.verify(request.botCheck);
+      if (!solved) return { outcome: "bot-check-failed" };
+      const sinceChallenge = clock.now().getTime() - solved.issuedAt.getTime();
+      if (sinceChallenge < minTimeToPost) return { outcome: "posted-too-soon" };
+      if (sinceChallenge > botChallengeLifetime) {
+        return { outcome: "bot-check-failed" };
+      }
+
       const displayName = request.displayName
         .normalize("NFC")
         .trim()
@@ -597,16 +644,30 @@ export function createCore({
         return { outcome: "comment-too-long" };
       }
 
-      const { visitor, browserToken } =
-        (await recognize(site, request.browserToken)) ??
-        (await issueBrowserToken(site));
+      // Each challenge posts one Comment only, so a bot pays for every one.
+      const unspent = await store.spendBotChallenge({
+        id: solved.id,
+        expiresAt: new Date(solved.issuedAt.getTime() + botChallengeLifetime),
+      });
+      if (!unspent) return { outcome: "bot-check-failed" };
+
+      const admitted = await admit(site, "comment", request);
+      if (!admitted) return { outcome: "rate-limited" };
+      const { visitor, browserToken } = admitted;
       const commenter = await commenterFor(site, visitor, displayName);
+      // A link is what spam comes for, so a Guest's waits for a Member.
+      const status: CommentStatus =
+        !commenter.verified &&
+        bodyOf(placed.text).some((segment) => segment.type === "link")
+          ? "pending"
+          : "published";
       const createdAt = clock.now();
       const { id } = await store.createComment({
         pageId: page.id,
         commenterId: commenter.id,
         displayName,
         ...placed,
+        status,
         createdAt,
       });
 
@@ -635,6 +696,7 @@ export function createCore({
             commenter,
             displayName,
             ...placed,
+            status,
             createdAt,
             voteCounts: { up: 0, down: 0 },
           },
@@ -775,6 +837,17 @@ export function createCore({
       };
     },
 
+    /** A bot check's challenge, which a browser solves before it posts. */
+    async issueBotChallenge(request: SiteRequest): Promise<BotChallengeResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      return {
+        outcome: "issued",
+        challenge: await botCheck.challenge(clock.now()),
+        postableIn: minTimeToPost,
+      };
+    },
+
     /**
      * Erases what abuse limits no longer remember, fingerprints included,
      * and expired magic links, with the emails nobody verified. The platform
@@ -784,6 +857,7 @@ export function createCore({
     async eraseExpired(): Promise<void> {
       await eraseExpiredFingerprints();
       await store.eraseMagicLinks(clock.now());
+      await store.eraseSpentBotChallenges(clock.now());
     },
   };
 }

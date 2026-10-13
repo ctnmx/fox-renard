@@ -1,0 +1,19 @@
+{
+  "name": "@fox-renard/altcha",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fox-renard/core": "workspace:*",
+    "altcha-lib": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

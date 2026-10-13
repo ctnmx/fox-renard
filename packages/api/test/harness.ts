@@ -185,10 +185,35 @@ export async function startTestApi() {
     );
   }
 
-  function postComment({
+  /** A bot check's challenge, as the Widget asks for one before posting. */
+  async function botChallenge({ page = routeSheet } = {}) {
+    const response = await client.v1.sites[":siteId"]["bot-challenge"].$get(
+      { param: { siteId: page.siteId } },
+      { headers: { Origin: page.origin } },
+    );
+    if (response.status !== 200) {
+      throw new Error(`Expected a bot check challenge, got ${response.status}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * A solution to a new challenge, as the Widget sends with a Comment once
+   * the time the challenge asks for has passed.
+   */
+  async function solvedBotCheck({ page = routeSheet } = {}) {
+    const { challenge, postableIn } = await botChallenge({ page });
+    clock.advance(postableIn);
+    return botCheck.solve(challenge);
+  }
+
+  async function postComment({
     page = routeSheet,
     origin = page.origin,
+    clientIp = anyClientIp,
     browserToken,
+    botCheck: solution,
+    honeypot,
     displayName,
     text,
     replyTo,
@@ -196,7 +221,12 @@ export async function startTestApi() {
   }: {
     page?: WidgetPage;
     origin?: string;
+    clientIp?: string;
     browserToken?: string;
+    /** The solution to a bot check's challenge, by default a new one solved. */
+    botCheck?: string;
+    /** The field the Widget hides, which only a bot fills in. */
+    honeypot?: string;
     displayName: string;
     text: string;
     /** The id of the Comment this one Replies to. */
@@ -208,9 +238,16 @@ export async function startTestApi() {
       {
         param: { siteId: page.siteId, pageKey: page.pageKey },
         header: authorization(browserToken),
-        json: { displayName, text, replyTo, email },
+        json: {
+          botCheck: solution ?? (await solvedBotCheck({ page })),
+          honeypot,
+          displayName,
+          text,
+          replyTo,
+          email,
+        },
       },
-      { headers: { Origin: origin } },
+      { headers: { Origin: origin, [clientIpHeader]: clientIp } },
     );
   }
 
@@ -315,6 +352,30 @@ export async function startTestApi() {
       return { status: response.status, voted };
     }
 
+    async function tryPost(
+      displayName: string,
+      text: string,
+      {
+        page = routeSheet,
+        replyTo,
+        email,
+      }: { page?: WidgetPage; replyTo?: string; email?: string } = {},
+    ) {
+      const response = await postComment({
+        page,
+        clientIp,
+        browserToken: browserTokens.get(page.siteId),
+        displayName,
+        text,
+        replyTo,
+        email,
+      });
+      if (response.status !== 201) return { status: response.status };
+      const posted = await response.json();
+      browserTokens.set(page.siteId, posted.browserToken);
+      return { status: response.status, posted };
+    }
+
     /** Opens a magic link in this browser; the Widget on its Page follows it. */
     async function tryFollowMagicLink(
       link: string,
@@ -357,30 +418,17 @@ export async function startTestApi() {
         return voted;
       },
 
+      tryPost,
+
       async post(
         displayName: string,
         text: string,
-        {
-          page = routeSheet,
-          replyTo,
-          email,
-        }: { page?: WidgetPage; replyTo?: string; email?: string } = {},
+        options: { page?: WidgetPage; replyTo?: string; email?: string } = {},
       ) {
-        const response = await postComment({
-          page,
-          browserToken: browserTokens.get(page.siteId),
-          displayName,
-          text,
-          replyTo,
-          email,
-        });
-        if (response.status !== 201) {
-          throw new Error(
-            `Expected the Comment to post, got ${response.status}`,
-          );
+        const { status, posted } = await tryPost(displayName, text, options);
+        if (!posted) {
+          throw new Error(`Expected the Comment to post, got ${status}`);
         }
-        const posted = await response.json();
-        browserTokens.set(page.siteId, posted.browserToken);
         return posted;
       },
 
@@ -421,6 +469,8 @@ export async function startTestApi() {
     databaseHolds: (text: string) => databaseHolds(db, text),
     loadWidget,
     putReaction,
+    botChallenge,
+    solvedBotCheck,
     postComment,
     putVote,
     magicLinkTo,

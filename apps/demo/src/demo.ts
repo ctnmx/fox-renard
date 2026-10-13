@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { createAltchaBotCheck } from "@fox-renard/altcha";
 import { createApp } from "@fox-renard/api";
 import { createCore } from "@fox-renard/core";
 import {
   EmailOutbox,
   FixedFingerprintSecret,
   InMemoryPhotoStore,
-  StubBotCheck,
 } from "@fox-renard/core/fakes";
 import { createStore, seed } from "@fox-renard/db";
 import { createPgliteDatabase } from "@fox-renard/db/pglite";
@@ -30,12 +30,14 @@ export async function startDemo(): Promise<void> {
     clock: { now: () => new Date() },
     email: outbox,
     photos: new InMemoryPhotoStore(),
-    botCheck: new StubBotCheck(),
+    // The real bot check, so that Seam 2 drives the Widget's solver.
+    botCheck: createAltchaBotCheck({ hmacKey: "demo-altcha-key" }),
     fingerprintSecret: new FixedFingerprintSecret(),
   });
 
   // Like the platform in production, erase what has expired every hour:
-  // fingerprints (ADR-0006) and magic links with their emails.
+  // fingerprints (ADR-0006), magic links with their emails, and the bot
+  // check's spent challenges.
   setInterval(
     () => core.eraseExpired().catch(console.error),
     60 * 60 * 1000,

@@ -76,6 +76,9 @@ export interface CastVote {
 /** How many Visitors hold each Vote on a Comment. */
 export type VoteCounts = Record<Vote, number>;
 
+/** Whether a Comment is public, or a Pending Comment awaiting a Member's approval. */
+export type CommentStatus = "published" | "pending";
+
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {
   id: string;
@@ -85,6 +88,7 @@ export interface Comment {
   /** The top-level Comment a Reply sits under, or `null` for a top-level Comment. */
   topLevelCommentId: string | null;
   text: string;
+  status: CommentStatus;
   createdAt: Date;
   voteCounts: VoteCounts;
 }

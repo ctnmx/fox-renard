@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fox-renard/api": "workspace:*",
+    "altcha-lib": "catalog:",
     "preact": "catalog:"
   },
   "devDependencies": {

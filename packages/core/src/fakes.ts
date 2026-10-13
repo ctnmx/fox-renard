@@ -4,12 +4,14 @@
  */
 import { magicLinkParameter } from "./core";
 import type {
+  BotChallenge,
   BotCheck,
   Clock,
   Email,
   EmailSender,
   FingerprintSecret,
   PhotoStore,
+  SolvedChallenge,
   StoredPhoto,
 } from "./ports";
 
@@ -62,12 +64,26 @@ export class InMemoryPhotoStore implements PhotoStore {
   }
 }
 
-/** Passes every solution until told to fail. */
+/**
+ * Takes a challenge itself for its solution, and passes every solution until
+ * told to fail.
+ */
 export class StubBotCheck implements BotCheck {
   passes = true;
 
-  async verify(): Promise<boolean> {
-    return this.passes;
+  async challenge(issuedAt: Date): Promise<BotChallenge> {
+    return { id: crypto.randomUUID(), issuedAt: issuedAt.toISOString() };
+  }
+
+  /** What a browser that solved `challenge` sends. */
+  solve(challenge: BotChallenge): string {
+    return JSON.stringify(challenge);
+  }
+
+  async verify(solution: string): Promise<SolvedChallenge | null> {
+    if (!this.passes) return null;
+    const { id, issuedAt } = JSON.parse(solution);
+    return { id, issuedAt: new Date(issuedAt) };
   }
 }
 

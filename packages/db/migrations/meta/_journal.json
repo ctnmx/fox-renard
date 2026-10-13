@@ -43,6 +43,13 @@
       "when": 1791832229021,
       "tag": "0005_magic-links",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791889597016,
+      "tag": "0006_anti-spam",
+      "breakpoints": true
     }
   ]
 }

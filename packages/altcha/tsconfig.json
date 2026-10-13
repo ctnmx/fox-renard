@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // WebCrypto, as every platform Fox Renard runs on provides it.
+    "lib": ["ES2023", "WebWorker"]
+  },
+  "include": ["src"]
+}

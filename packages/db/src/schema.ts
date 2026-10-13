@@ -168,6 +168,10 @@ export const comments = pgTable(
     ),
     /** Plain text, as its Commenter wrote it. */
     text: text("text").notNull(),
+    /** Pending Comments wait for a Member's approval. */
+    status: text("status", { enum: ["published", "pending"] })
+      .notNull()
+      .default("published"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (table) => [index().on(table.pageId, table.createdAt)],
@@ -233,7 +237,7 @@ export const rateLimitHits = pgTable(
      * Each action counts against limits of its own. Hits recorded before
      * Votes existed were all Reactions.
      */
-    action: text("action", { enum: ["reaction", "vote"] })
+    action: text("action", { enum: ["reaction", "vote", "comment"] })
       .notNull()
       .default("reaction"),
     /** A keyed hash of the client's network, never its IP address. */
@@ -275,4 +279,17 @@ export const reactionOptionsRelations = relations(
       references: [reactionSets.siteId],
     }),
   }),
+);
+
+/**
+ * The bot check's challenges already solved, remembered until they expire so
+ * that each posts one Comment only.
+ */
+export const spentBotChallenges = pgTable(
+  "spent_bot_challenges",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index().on(table.expiresAt)],
 );

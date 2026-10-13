@@ -2,6 +2,7 @@ import type {
   CastVote,
   Comment,
   Commenter,
+  CommentStatus,
   MagicLink,
   Page,
   Reaction,
@@ -73,6 +74,7 @@ export interface Store {
     displayName: string;
     topLevelCommentId: string | null;
     text: string;
+    status: CommentStatus;
     createdAt: Date;
   }): Promise<{ id: string }>;
   /** One of a Page's Comments, top-level or Reply. */
@@ -98,6 +100,16 @@ export interface Store {
   }): Promise<{ byFingerprint: number; byVisitor: number }>;
   /** Erases the hits made at or before `cutoff`, fingerprints with them. */
   eraseRateLimitHits(cutoff: Date): Promise<void>;
+  /**
+   * Remembers a bot check's challenge as solved until `expiresAt`, and tells
+   * whether it was not already.
+   */
+  spendBotChallenge(challenge: {
+    id: string;
+    expiresAt: Date;
+  }): Promise<boolean>;
+  /** Forgets the solved challenges that expired at or before `cutoff`. */
+  eraseSpentBotChallenges(cutoff: Date): Promise<void>;
 }
 
 /** A browser to link to a Commenter, with the Guest whose Comments it brings. */
@@ -109,7 +121,7 @@ export interface BrowserLink {
 }
 
 /** What abuse limits count apart, each against limits of its own. */
-export type RateLimitedAction = "reaction" | "vote";
+export type RateLimitedAction = "reaction" | "vote" | "comment";
 
 export interface RateLimitHit {
   siteId: string;
@@ -148,9 +160,25 @@ export interface PhotoStore {
   delete(key: string): Promise<void>;
 }
 
-/** Verifies the invisible bot check a Widget solved before posting. */
+/** A bot check's challenge, as the Widget receives it to solve. */
+export type BotChallenge = Record<string, unknown>;
+
+/** The challenge a valid solution solved. */
+export interface SolvedChallenge {
+  /** Tells the challenge apart from every other, so it is solved once only. */
+  id: string;
+  issuedAt: Date;
+}
+
+/**
+ * The invisible proof-of-work a browser solves before it posts, such as
+ * ALTCHA. Its challenges record when they were issued, out of reach of the
+ * browser solving them.
+ */
 export interface BotCheck {
-  verify(solution: string): Promise<boolean>;
+  challenge(issuedAt: Date): Promise<BotChallenge>;
+  /** The challenge a solution solves, or `null` when it solves none. */
+  verify(solution: string): Promise<SolvedChallenge | null>;
 }
 
 /**

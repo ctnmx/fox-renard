@@ -20,6 +20,7 @@ import {
   pages,
   rateLimitHits,
   reactions,
+  spentBotChallenges,
   visitors,
   votes,
 } from "./schema";
@@ -94,6 +95,7 @@ export function createStore(db: Database): Store {
         displayName: comments.displayName,
         topLevelCommentId: comments.topLevelCommentId,
         text: comments.text,
+        status: comments.status,
         createdAt: comments.createdAt,
         voteCounts: { up: countOf("up"), down: countOf("down") },
       })
@@ -427,6 +429,21 @@ export function createStore(db: Database): Store {
 
     async eraseRateLimitHits(cutoff) {
       await db.delete(rateLimitHits).where(lte(rateLimitHits.at, cutoff));
+    },
+
+    async spendBotChallenge(challenge) {
+      const spent = await db
+        .insert(spentBotChallenges)
+        .values(challenge)
+        .onConflictDoNothing()
+        .returning({ id: spentBotChallenges.id });
+      return spent.length > 0;
+    },
+
+    async eraseSpentBotChallenges(cutoff) {
+      await db
+        .delete(spentBotChallenges)
+        .where(lte(spentBotChallenges.expiresAt, cutoff));
     },
   };
 }
