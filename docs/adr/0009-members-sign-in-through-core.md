@@ -1,8 +1,8 @@
 # Members sign in through Core, not Better Auth
 
-The V1 spec named Better Auth for the Members' magic links. Core signs Members in itself instead, the way it already verifies Commenters: a sign-in link carries a random token, works once and for an hour, and opens a console session. The session is another random token, kept in a `__Host-` cookie that is HttpOnly, Secure and SameSite=Strict, and stored only as its SHA-256, so a copy of the database signs nobody in. Each session lasts 30 days, until its Member signs out.
+The V1 spec named Better Auth for the Members' magic links. Core signs Members in itself instead, the way it already verifies Commenters. A sign-in link carries a random token, works once and for an hour, and opens a console session. The session is another random token. The browser keeps it in a `__Host-` cookie that is HttpOnly, Secure and SameSite=Strict. The database keeps only its SHA-256, so a copy of the database signs nobody in. A session lasts 30 days, or until its Member signs out.
 
-Better Auth would have kept its own users, sessions and verification tokens beside our Members table, and read its own clock. Seam 1 drives expiry through Core's controllable clock, which Better Auth's links and sessions would escape. Its session cookie is also signed with a secret, a secret the Worker would need. The sign-in rules, a few dozen lines, stay in Core with the others, behind the same ports (ADR-0003).
+Better Auth would have kept its own users, sessions and verification tokens beside our Members table, and read its own clock. Seam 1 drives expiry through Core's controllable clock, which Better Auth's links and sessions would escape. Better Auth also signs its session cookie with a secret, one more for the Worker to hold. The sign-in rules, a few dozen lines, stay in Core with the others, behind the same ports (ADR-0003).
 
 ## Considered Options
 

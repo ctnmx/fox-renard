@@ -1,9 +1,18 @@
-import { createClient, type ModeratedStatus } from "@fox-renard/api/client";
+import {
+  createClient,
+  type ListedStatus,
+  listedStatuses,
+} from "@fox-renard/api/client";
 import { queryOptions } from "@tanstack/react-query";
 
 // The Worker serves the console and the HTTP API on one origin, so the
 // session cookie, which no other origin receives, goes with each request.
 const client = createClient(location.origin);
+
+/** Whether a value, such as one from the console's address, is a status Comments are listed by. */
+export function isListedStatus(value: unknown): value is ListedStatus {
+  return listedStatuses.some((status) => status === value);
+}
 
 /** The console's session ended, or never began. */
 export class SignedOut extends Error {}
@@ -46,7 +55,7 @@ export function pagesQuery(siteId: string) {
 /** A Site's Comments with one status, newest first, on one Page or all. */
 async function fetchComments(
   siteId: string,
-  status: ModeratedStatus,
+  status: ListedStatus,
   pageKey: string | undefined,
 ) {
   const response = await client.v1.console.sites[":siteId"].comments.$get({
@@ -57,13 +66,11 @@ async function fetchComments(
   return (await response.json()).comments;
 }
 
-export type ModeratedComment = Awaited<
-  ReturnType<typeof fetchComments>
->[number];
+export type ConsoleComment = Awaited<ReturnType<typeof fetchComments>>[number];
 
 export function commentsQuery(
   siteId: string,
-  status: ModeratedStatus,
+  status: ListedStatus,
   pageKey: string | undefined,
 ) {
   return queryOptions({

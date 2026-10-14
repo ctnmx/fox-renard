@@ -90,19 +90,19 @@ export interface CastVote {
 export type VoteCounts = Record<Vote, number>;
 
 /** The statuses a Member lists a Site's Comments by. */
-export const moderatedStatuses = ["published", "pending", "spam"] as const;
+export const listedStatuses = ["published", "pending", "spam"] as const;
 
 /**
  * Whether a Comment is public, a Pending Comment awaiting a Member's
  * approval, or spam a Member set apart.
  */
-export type ModeratedStatus = (typeof moderatedStatuses)[number];
+export type ListedStatus = (typeof listedStatuses)[number];
 
 /**
  * A Comment's status. A deleted Comment with Replies stays as a placeholder,
  * so that its Replies keep their place.
  */
-export type CommentStatus = ModeratedStatus | "deleted";
+export type CommentStatus = ListedStatus | "deleted";
 
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {

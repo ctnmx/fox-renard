@@ -3,9 +3,9 @@ import type { App } from "./app";
 
 export {
   type CommentSort,
-  type ModeratedStatus,
+  type ListedStatus,
+  listedStatuses,
   magicLinkParameter,
-  moderatedStatuses,
   signInPath,
   type Vote,
 } from "@fox-renard/core";

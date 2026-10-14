@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import {
   consoleOrigin,
+  rectoVerso,
   routeSheet,
   startTestApi,
   type TestApi,
@@ -37,7 +38,7 @@ describe("Members are emailed every new Comment", () => {
     const [email] = api.emailsTo("membre@example.com");
     expect(email?.text).toContain("« Tour du Mont Aiguille »");
     expect(email?.text).toContain(
-      `${consoleOrigin}/?status=published&page=${routeSheet.pageKey}`,
+      `${consoleOrigin}/?site=${rectoVerso.siteId}&status=published&page=${routeSheet.pageKey}`,
     );
   });
 
@@ -56,7 +57,9 @@ describe("Members are emailed every new Comment", () => {
     });
     expect(pending).toMatchObject({
       subject: "Commentaire en attente de Jeanne sur Recto Verso",
-      text: expect.stringContaining(`${consoleOrigin}/?status=pending&page=`),
+      text: expect.stringMatching(
+        `${consoleOrigin}/\\?site=.+&status=pending&page=`,
+      ),
     });
   });
 

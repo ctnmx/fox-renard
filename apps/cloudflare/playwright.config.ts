@@ -28,6 +28,8 @@ const worker = {
     // about a new Comment fails, and the Comment posts all the same.
     "--var BREVO_API_KEY:seam-3-sends-no-email",
     "--var ALTCHA_HMAC_KEY:seam-3-altcha-key",
+    // The links emailed to Members point at the local console.
+    `--var CONSOLE_ORIGIN:${apiOrigin}`,
   ].join(" "),
   url: `${apiOrigin}/widget.js`,
   env: {

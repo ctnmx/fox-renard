@@ -1,8 +1,7 @@
 CREATE TABLE "console_sessions" (
 	"token_hash" text PRIMARY KEY NOT NULL,
 	"member_id" uuid NOT NULL,
-	"expires_at" timestamp with time zone NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+	"expires_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "sign_in_links" (

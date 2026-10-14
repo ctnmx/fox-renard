@@ -60,7 +60,6 @@ export const consoleSessions = pgTable(
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: createdAt(),
   },
   (table) => [index().on(table.memberId), index().on(table.expiresAt)],
 );

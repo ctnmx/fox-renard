@@ -55,7 +55,7 @@ export async function startDemo(): Promise<void> {
     import.meta.resolve("@fox-renard/console/index.html"),
   );
 
-  const foxRenard = new Hono()
+  const apiWidgetAndConsole = new Hono()
     .get("/widget.js", async (c) =>
       c.body(await readFile(widgetScript), 200, {
         "Content-Type": "text/javascript; charset=utf-8",
@@ -73,7 +73,7 @@ export async function startDemo(): Promise<void> {
     .get("*", async (c) => c.html(await readFile(consolePage, "utf8")));
 
   serve({
-    fetch: foxRenard.fetch,
+    fetch: apiWidgetAndConsole.fetch,
     port: Number(new URL(apiOrigin).port),
   });
   serveRouteSheet(apiOrigin);

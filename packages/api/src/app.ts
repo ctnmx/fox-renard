@@ -1,7 +1,7 @@
 import {
   type Core,
   commentSorts,
-  moderatedStatuses,
+  listedStatuses,
   voteDirections,
 } from "@fox-renard/core";
 import { zValidator } from "@hono/zod-validator";
@@ -339,7 +339,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
         validate(
           "query",
           z.object({
-            status: z.enum(moderatedStatuses),
+            status: z.enum(listedStatuses),
             page: z.string().min(1).max(500).optional(),
           }),
         ),

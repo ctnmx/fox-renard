@@ -1,7 +1,7 @@
 // The console, where Members sign in to manage their Organization's Sites.
 import { randomHex, sha256Hex } from "./crypto";
 import { signInLinkEmail } from "./emails";
-import type { Comment, Member, ModeratedStatus, Page } from "./model";
+import type { Comment, ListedStatus, Member, Page } from "./model";
 import type { Clock, EmailSender, Store } from "./ports";
 
 const hour = 60 * 60 * 1000;
@@ -33,16 +33,22 @@ export interface ConsoleRequest {
 
 type SignedOut = { outcome: "signed-out" };
 
-/** Which of a Site's Comments the console lists. */
-export interface CommentFilterRequest extends ConsoleRequest {
+/** A Member's request about one of their Sites. */
+export interface ConsoleSiteRequest extends ConsoleRequest {
   siteId: string;
-  status: ModeratedStatus;
+}
+
+type SiteRefusal = SignedOut | { outcome: "site-not-found" };
+
+/** Which of a Site's Comments the console lists. */
+export interface CommentFilterRequest extends ConsoleSiteRequest {
+  status: ListedStatus;
   /** The Page whose Comments to list, or `null` for all the Site's Pages. */
   pageKey: string | null;
 }
 
 /** A Comment or a Reply as a Member moderates it. */
-export interface ModeratedCommentView {
+export interface ConsoleCommentView {
   id: string;
   page: Pick<Page, "key" | "title">;
   commenter: { displayName: string; verified: boolean };
@@ -69,18 +75,16 @@ export type DeletionResult = { outcome: "deleted" } | CommentRefusal;
 /** A Page as the console offers it to filter Comments by. */
 export type CommentedPage = Pick<Page, "key" | "title"> & {
   /** How many of its Comments and Replies each status holds. */
-  counts: Record<ModeratedStatus, number>;
+  counts: Record<ListedStatus, number>;
 };
 
 export type ConsolePagesResult =
   | { outcome: "listed"; pages: CommentedPage[] }
-  | SignedOut
-  | { outcome: "site-not-found" };
+  | SiteRefusal;
 
 export type ConsoleCommentsResult =
-  | { outcome: "listed"; comments: ModeratedCommentView[] }
-  | SignedOut
-  | { outcome: "site-not-found" };
+  | { outcome: "listed"; comments: ConsoleCommentView[] }
+  | SiteRefusal;
 
 export type SignInResult =
   | {
@@ -100,9 +104,9 @@ export type ConsoleHomeResult =
     }
   | SignedOut;
 
-function moderatedView(
-  comment: Comment & { page: ModeratedCommentView["page"] },
-): ModeratedCommentView {
+function consoleCommentView(
+  comment: Comment & { page: ConsoleCommentView["page"] },
+): ConsoleCommentView {
   return {
     id: comment.id,
     page: comment.page,
@@ -140,10 +144,19 @@ export function createConsole({
     return session.member;
   }
 
-  /** One of the Member's Sites; another Organization's is never found. */
-  async function siteOf(member: Member, siteId: string) {
+  /**
+   * The Site a signed-in Member asks about, if their Organization owns it;
+   * another Organization's is never found.
+   */
+  async function siteToManage(
+    request: ConsoleSiteRequest,
+  ): Promise<SiteRefusal | { outcome: "found"; siteId: string }> {
+    const member = await signedIn(request);
+    if (!member) return { outcome: "signed-out" };
     const sites = await store.listSites(member.organization.id);
-    return sites.find((site) => site.id === siteId) ?? null;
+    const site = sites.find(({ id }) => id === request.siteId);
+    if (!site) return { outcome: "site-not-found" };
+    return { outcome: "found", siteId: site.id };
   }
 
   /** The Comment a signed-in Member asks about, if one of their Sites holds it. */
@@ -168,7 +181,7 @@ export function createConsole({
   return {
     /**
      * Emails a sign-in link to the Member with this address. An address no
-     * Member has is sent nothing, and the caller cannot tell the difference.
+     * Member has is sent nothing, and the HTTP API answers it the same.
      */
     async requestSignInLink({ email }: { email: string }): Promise<void> {
       const member = await store.findMember(email);
@@ -232,15 +245,13 @@ export function createConsole({
 
     /** The Pages of a Site that hold Comments, by title, to filter Comments by. */
     async consolePages(
-      request: ConsoleRequest & { siteId: string },
+      request: ConsoleSiteRequest,
     ): Promise<ConsolePagesResult> {
-      const member = await signedIn(request);
-      if (!member) return { outcome: "signed-out" };
-      const site = await siteOf(member, request.siteId);
-      if (!site) return { outcome: "site-not-found" };
+      const found = await siteToManage(request);
+      if (found.outcome !== "found") return found;
       return {
         outcome: "listed",
-        pages: await store.listCommentedPages(site.id),
+        pages: await store.listCommentedPages(found.siteId),
       };
     },
 
@@ -248,17 +259,15 @@ export function createConsole({
     async consoleComments(
       request: CommentFilterRequest,
     ): Promise<ConsoleCommentsResult> {
-      const member = await signedIn(request);
-      if (!member) return { outcome: "signed-out" };
-      const site = await siteOf(member, request.siteId);
-      if (!site) return { outcome: "site-not-found" };
+      const found = await siteToManage(request);
+      if (found.outcome !== "found") return found;
 
       const { status, pageKey } = request;
-      const comments = await store.listSiteComments(site.id, {
+      const comments = await store.listSiteComments(found.siteId, {
         status,
         pageKey,
       });
-      return { outcome: "listed", comments: comments.map(moderatedView) };
+      return { outcome: "listed", comments: comments.map(consoleCommentView) };
     },
 
     /** Publishes a Pending Comment, or one marked as spam by mistake. */
@@ -282,6 +291,7 @@ export function createConsole({
     /**
      * Deletes a Comment. A top-level Comment with Replies leaves a
      * placeholder that keeps them, and a placeholder goes with its last Reply.
+     * Comments hold no Photo yet: #12 deletes them with their Comment.
      */
     async deleteComment(
       request: CommentModerationRequest,

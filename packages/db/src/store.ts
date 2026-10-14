@@ -1,6 +1,6 @@
 import type {
   BrowserLink,
-  ModeratedStatus,
+  ListedStatus,
   Page,
   Store,
   Vote,
@@ -538,6 +538,13 @@ export function createStore(db: Database): Store {
       return found.map(({ email }) => email);
     },
 
+    async eraseSignIns(cutoff) {
+      await db.delete(signInLinks).where(lte(signInLinks.expiresAt, cutoff));
+      await db
+        .delete(consoleSessions)
+        .where(lte(consoleSessions.expiresAt, cutoff));
+    },
+
     async listSites(organizationId) {
       return db
         .select({ id: sites.id, name: sites.name })
@@ -567,7 +574,7 @@ export function createStore(db: Database): Store {
     },
 
     async listCommentedPages(siteId) {
-      const countOf = (status: ModeratedStatus) =>
+      const countOf = (status: ListedStatus) =>
         sql<number>`count(*) filter (where ${comments.status} = ${status})`.mapWith(
           Number,
         );

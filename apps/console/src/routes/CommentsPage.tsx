@@ -1,7 +1,4 @@
-import {
-  type ModeratedStatus,
-  moderatedStatuses,
-} from "@fox-renard/api/client";
+import type { ListedStatus } from "@fox-renard/api/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useNavigate,
@@ -9,8 +6,9 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import {
+  type ConsoleComment,
   commentsQuery,
-  type ModeratedComment,
+  isListedStatus,
   moderate,
   pagesQuery,
 } from "@/api";
@@ -49,11 +47,7 @@ const dateFormat = new Intl.DateTimeFormat("fr", {
 });
 
 /** The order of the status tabs: what waits for the Member first. */
-const tabs: ModeratedStatus[] = ["pending", "published", "spam"];
-
-function isModeratedStatus(value: string): value is ModeratedStatus {
-  return moderatedStatuses.some((status) => status === value);
-}
+const tabs: ListedStatus[] = ["pending", "published", "spam"];
 
 /** Approves, marks as spam or deletes a Comment, then lists Comments anew. */
 function useModeration(siteId: string) {
@@ -79,8 +73,8 @@ function CommentCard({
   status,
   siteId,
 }: {
-  comment: ModeratedComment;
-  status: ModeratedStatus;
+  comment: ConsoleComment;
+  status: ListedStatus;
   siteId: string;
 }) {
   const moderation = useModeration(siteId);
@@ -176,7 +170,7 @@ export function CommentsPage() {
     enabled: Boolean(site),
   });
 
-  const total = (status: ModeratedStatus) =>
+  const total = (status: ListedStatus) =>
     (pages.data ?? [])
       .filter(({ key }) => search.page === undefined || key === search.page)
       .reduce((sum, { counts }) => sum + counts[status], 0);
@@ -195,7 +189,7 @@ export function CommentsPage() {
       <Tabs
         value={search.status}
         onValueChange={(status) => {
-          if (isModeratedStatus(status)) {
+          if (isListedStatus(status)) {
             void navigate({ search: (previous) => ({ ...previous, status }) });
           }
         }}

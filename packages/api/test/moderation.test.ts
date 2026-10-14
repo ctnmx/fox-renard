@@ -120,6 +120,25 @@ describe("a Member moderates Comments", () => {
     expect(await member.comments({ status: "published" })).toEqual([]);
   });
 
+  test("marking a Comment with Replies as spam leaves the placeholder a deleted one would, keeping its Replies", async () => {
+    const { comment } = await api.newBrowser().post("Marie", "Achetez.");
+    const { comment: reply } = await api
+      .newBrowser()
+      .post("Paul", "Non merci.", { replyTo: comment.id });
+    const member = await api.signedInMember();
+
+    await member.markAsSpam(comment.id);
+
+    expect((await api.loadWidget()).comments).toEqual([
+      {
+        id: comment.id,
+        deleted: true,
+        createdAt: comment.createdAt,
+        replies: [expect.objectContaining({ id: reply.id })],
+      },
+    ]);
+  });
+
   test("a Comment marked as spam by mistake is approved back", async () => {
     const { comment } = await api.newBrowser().post("Marie", "Superbe boucle.");
     const member = await api.signedInMember();

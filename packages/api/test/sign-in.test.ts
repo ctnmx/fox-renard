@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, test } from "vitest";
 import { rectoVerso, startTestApi, type TestApi } from "./harness";
 
@@ -10,7 +11,12 @@ beforeEach(async () => {
   api = await startTestApi();
 });
 
-describe("a Member signs in to the console with a magic link", () => {
+/** How Fox Renard stores a token: its SHA-256, never the token itself. */
+function storedAs(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+describe("a Member signs in to the console with a sign-in link", () => {
   test("a Member requests a sign-in link, follows it from the outbox, and gets a console session", async () => {
     const member = api.newConsole();
     expect((await member.tryHome()).status).toBe(401);
@@ -114,5 +120,21 @@ describe("a Member signs in to the console with a magic link", () => {
     api.clock.advance(hour);
     await member.requestSignInLink("membre@example.com");
     expect(api.outbox.sent).toHaveLength(4);
+  });
+
+  test("the hourly erasure forgets the sign-in links and the sessions that expired", async () => {
+    const member = api.newConsole();
+    await member.requestSignInLink("membre@example.com");
+    const unused = api.signInLinkTo("membre@example.com");
+    await member.requestSignInLink("membre@example.com");
+    await member.signIn(api.signInLinkTo("membre@example.com"));
+    const [, sessionToken = ""] = (member.cookie ?? "").split("=");
+
+    api.clock.advance(30 * day);
+    await api.runHourlyErasure();
+
+    const linkToken = new URL(unused).hash.slice("#token=".length);
+    expect(await api.databaseHolds(storedAs(linkToken))).toBe(false);
+    expect(await api.databaseHolds(storedAs(sessionToken))).toBe(false);
   });
 });

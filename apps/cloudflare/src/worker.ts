@@ -72,8 +72,9 @@ export default {
   },
 
   // Every hour, so no fingerprint outlives 24 hours (ADR-0006), an email
-  // nobody verified goes within an hour of its magic link expiring, and the
-  // bot check forgets the challenges that expired.
+  // nobody verified goes within an hour of its magic link expiring, the bot
+  // check forgets the challenges that expired, and expired sign-in links and
+  // console sessions go.
   async scheduled(_controller, env) {
     // The erasure emails nobody, so it needs no console origin.
     const { core, close } = openCore(env, env.CONSOLE_ORIGIN ?? "");

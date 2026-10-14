@@ -113,8 +113,9 @@ export interface CommentView {
 }
 
 /**
- * What stays of a deleted top-level Comment with Replies: its place, and its
- * Replies oldest first. It keeps nothing its Commenter said, nor their name.
+ * What stays of a top-level Comment with Replies once deleted, or marked as
+ * spam: its place, and its Replies oldest first. It shows nothing its
+ * Commenter said, nor their name.
  */
 export interface DeletedCommentView {
   id: string;
@@ -294,7 +295,7 @@ function topLevelCommentViews(
       .map((comment): TopLevelCommentView => {
         const { id, createdAt } = comment;
         const repliesTo = replies.get(id) ?? [];
-        return comment.status === "deleted"
+        return comment.status === "deleted" || comment.status === "spam"
           ? { id, deleted: true, createdAt, replies: repliesTo }
           : { ...viewOf(comment), replies: repliesTo };
       })
@@ -344,8 +345,9 @@ function placeReply(
 
 /**
  * Whether a browser posting as `commenter` sees a Comment. A Pending Comment
- * shows to its Commenter's browsers only, and spam to nobody. A deleted
- * Comment's placeholder holds its Replies.
+ * shows to its Commenter's browsers only, and a Reply marked as spam to
+ * nobody. A top-level Comment deleted or marked as spam shows as a
+ * placeholder, which holds its Replies.
  */
 function shownTo(comment: Comment, commenter: Commenter | null): boolean {
   switch (comment.status) {
@@ -355,7 +357,7 @@ function shownTo(comment: Comment, commenter: Commenter | null): boolean {
     case "pending":
       return comment.commenter.id === commenter?.id;
     case "spam":
-      return false;
+      return comment.topLevelCommentId === null;
   }
 }
 
@@ -628,7 +630,7 @@ export function createCore({
 
   /**
    * Emails each Member of the Site a new Comment, with a link to its Page's
-   * Comments of its status on the console. The Comment stays posted when an
+   * Comments of its status, on its Site, on the console. The Comment stays posted when an
    * email cannot be sent.
    */
   async function notifyMembers({
@@ -647,7 +649,11 @@ export function createCore({
     status: CommentStatus;
   }): Promise<void> {
     const link = new URL("/", consoleOrigin);
-    link.search = new URLSearchParams({ status, page: page.key }).toString();
+    link.search = new URLSearchParams({
+      site: site.id,
+      status,
+      page: page.key,
+    }).toString();
     for (const to of await store.findMemberEmails(site.id)) {
       try {
         await emailSender.send(
@@ -952,15 +958,17 @@ export function createCore({
     },
 
     /**
-     * Erases what abuse limits no longer remember, fingerprints included,
-     * and expired magic links, with the emails nobody verified. The platform
-     * runs it every hour, since reacting and voting erase only when someone
-     * reacts or votes (ADR-0006).
+     * Erases what abuse limits no longer remember, fingerprints included;
+     * expired magic links, with the emails nobody verified; and the sign-in
+     * links and console sessions that expired. The platform runs it every
+     * hour, since reacting and voting erase only when someone reacts or votes
+     * (ADR-0006).
      */
     async eraseExpired(): Promise<void> {
       await eraseExpiredFingerprints();
       await store.eraseMagicLinks(clock.now());
       await store.eraseSpentBotChallenges(clock.now());
+      await store.eraseSignIns(clock.now());
     },
   };
 }

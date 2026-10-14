@@ -23,7 +23,7 @@
   ],
   "workers_dev": false,
   "preview_urls": true,
-  // Erases expired fingerprints (ADR-0006) and magic links every hour.
+  // Erases expired fingerprints (ADR-0006), magic links and sign-ins every hour.
   "triggers": { "crons": ["0 * * * *"] },
   "vars": {
     "EMAIL_SENDER_ADDRESS": "noreply@mail.foxrenard.com",

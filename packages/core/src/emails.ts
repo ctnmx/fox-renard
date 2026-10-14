@@ -71,6 +71,26 @@ export function signInLinkEmail({
   };
 }
 
+/** What a Member's email calls a top-level Comment, and a Reply. */
+const commentWords = {
+  comment: {
+    posted: "un commentaire",
+    published: "Nouveau commentaire",
+    pending: "Commentaire en attente",
+    awaitingApproval:
+      "Ce commentaire contient un lien : il attend votre approbation, et seul son auteur le voit en attendant.",
+    moderate: "Pour le modérer",
+  },
+  reply: {
+    posted: "une réponse",
+    published: "Nouvelle réponse",
+    pending: "Réponse en attente",
+    awaitingApproval:
+      "Cette réponse contient un lien : elle attend votre approbation, et seul son auteur la voit en attendant.",
+    moderate: "Pour la modérer",
+  },
+};
+
 /**
  * The email that tells a Member of a new Comment or Reply on one of their
  * Sites, with a link to moderate it on the console.
@@ -96,23 +116,18 @@ export function newCommentEmail({
   pending: boolean;
   link: string;
 }): Email {
-  const subject = pending
-    ? `${reply ? "Réponse" : "Commentaire"} en attente de ${displayName} sur ${site.name}`
-    : `${reply ? "Nouvelle réponse" : "Nouveau commentaire"} de ${displayName} sur ${site.name}`;
-  const awaitingApproval = reply
-    ? "Cette réponse contient un lien : elle attend votre approbation, et seul son auteur la voit en attendant."
-    : "Ce commentaire contient un lien : il attend votre approbation, et seul son auteur le voit en attendant.";
+  const words = commentWords[reply ? "reply" : "comment"];
   return {
     to,
     senderName: senderNameOf(site),
-    subject,
+    subject: `${pending ? words.pending : words.published} de ${displayName} sur ${site.name}`,
     text: [
-      `${displayName} a publié ${reply ? "une réponse" : "un commentaire"} sur « ${page.title} » :`,
+      `${displayName} a publié ${words.posted} sur « ${page.title} » :`,
       "",
       text,
       "",
-      ...(pending ? [awaitingApproval, ""] : []),
-      `Pour ${reply ? "la" : "le"} modérer : ${link}`,
+      ...(pending ? [words.awaitingApproval, ""] : []),
+      `${words.moderate} : ${link}`,
     ].join("\n"),
   };
 }

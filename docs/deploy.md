@@ -29,7 +29,7 @@ Some rules hold for every deployment:
 - **Previews never hold production data** (ADR-0008). Their branches belong to a second Neon project, and their seed uses the demo Member `membre@example.com`.
 - **The smoke check** serves the demo route sheet on `localhost` and loads it against the deployment. It sees the Reaction Set, and the console's sign-in page, as Seam 3's `@smoke` tests do locally. It adds one Page, `article-smoke-check`, to Recto Verso's Site, which is why `localhost` is one of its Allowed Domains.
 - **Previews run no Cron Trigger.** Cloudflare runs the hourly erasure on production only.
-  _Contradicts ADR-0006 on previews, but worth accepting:_ a preview erases expired fingerprints only when someone reacts or votes there, and keeps expired magic links, with their emails, until its pull request closes. Previews hold only the data of people testing them, and Cloudflare runs no Cron Trigger on a preview.
+  _Contradicts ADR-0006 on previews, but worth accepting:_ a preview erases expired fingerprints only when someone reacts or votes there, and keeps expired magic links, with their emails, and expired sign-ins until its pull request closes. Previews hold only the data of people testing them, and Cloudflare runs no Cron Trigger on a preview.
 
 ## The console
 

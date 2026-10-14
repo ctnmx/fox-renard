@@ -3,9 +3,9 @@ import type {
   Comment,
   Commenter,
   CommentStatus,
+  ListedStatus,
   MagicLink,
   Member,
-  ModeratedStatus,
   Page,
   Reaction,
   Site,
@@ -125,6 +125,8 @@ export interface Store {
     tokenHash: string,
   ): Promise<{ member: Member; expiresAt: Date } | null>;
   deleteConsoleSession(tokenHash: string): Promise<void>;
+  /** Erases the sign-in links and console sessions that expired at or before `cutoff`. */
+  eraseSignIns(cutoff: Date): Promise<void>;
   /** The email of each Member of the Organization that owns a Site. */
   findMemberEmails(siteId: string): Promise<string[]>;
   /** An Organization's Sites, by name. */
@@ -132,7 +134,7 @@ export interface Store {
   /** A Site's Comments and Replies with one status, newest first, on one Page or all. */
   listSiteComments(
     siteId: string,
-    filter: { status: ModeratedStatus; pageKey: string | null },
+    filter: { status: ListedStatus; pageKey: string | null },
   ): Promise<(Comment & { page: Pick<Page, "key" | "title"> })[]>;
   /**
    * The Pages of a Site that hold Comments other than placeholders, by
@@ -140,7 +142,7 @@ export interface Store {
    */
   listCommentedPages(siteId: string): Promise<
     (Pick<Page, "key" | "title"> & {
-      counts: Record<ModeratedStatus, number>;
+      counts: Record<ListedStatus, number>;
     })[]
   >;
   /** A Comment or a Reply on one of an Organization's Sites; another Organization's is never found. */

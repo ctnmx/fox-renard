@@ -1,7 +1,7 @@
 import {
   type CommentSort,
   createCore,
-  type ModeratedStatus,
+  type ListedStatus,
   magicLinkParameter,
   type Vote,
 } from "@fox-renard/core";
@@ -90,7 +90,7 @@ export interface WidgetPage {
 interface CommentFilter {
   /** Recto Verso's, unless told otherwise. */
   siteId?: string;
-  status: ModeratedStatus;
+  status: ListedStatus;
   /** The Page whose Comments to list, or all Pages when left out. */
   pageKey?: string;
 }
