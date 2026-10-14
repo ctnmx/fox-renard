@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { Vote } from "@fox-renard/core";
 import { beforeEach, describe, expect, test } from "vitest";
-import { routeSheet, startTestApi, type TestApi } from "./harness";
+import {
+  routeSheet,
+  shownComments,
+  startTestApi,
+  type TestApi,
+} from "./harness";
 
 let api: TestApi;
 
 /** The Vote a browser holds on each Comment its Widget data lists, by Comment id. */
-function votesIn(data: { comments: { id: string; vote: string | null }[] }) {
-  return Object.fromEntries(data.comments.map(({ id, vote }) => [id, vote]));
+function votesIn(data: Parameters<typeof shownComments>[0]) {
+  return Object.fromEntries(
+    shownComments(data).map(({ id, vote }) => [id, vote]),
+  );
 }
 
 beforeEach(async () => {
@@ -62,7 +69,7 @@ describe("a Visitor votes on a Comment", () => {
       voteCounts: { up: 1, down: 1 },
       vote: "down",
     });
-    expect((await api.loadWidget()).comments[0]?.voteCounts).toEqual({
+    expect(shownComments(await api.loadWidget())[0]?.voteCounts).toEqual({
       up: 1,
       down: 1,
     });
@@ -100,7 +107,7 @@ describe("a Visitor votes on a Comment", () => {
 
     expect(anna.browserToken).toBe(firstToken);
     expect(
-      (await api.loadWidget()).comments.map(
+      shownComments(await api.loadWidget()).map(
         ({ voteCounts }) => voteCounts.up + voteCounts.down,
       ),
     ).toEqual([1]);
@@ -171,7 +178,7 @@ describe("a Vote is refused and changes nothing", () => {
 
     expect(response.status).toBe(status);
     expect(
-      (await api.loadWidget()).comments.map(({ voteCounts }) => voteCounts),
+      shownComments(await api.loadWidget()).map(({ voteCounts }) => voteCounts),
     ).toEqual([{ up: 0, down: 0 }]);
   });
 });
@@ -201,7 +208,7 @@ describe("abuse limits on voting", () => {
       .newBrowser({ clientIp })
       .tryVote(comment.id, "up");
     expect(refused.status).toBe(429);
-    expect((await api.loadWidget()).comments[0]?.voteCounts).toEqual({
+    expect(shownComments(await api.loadWidget())[0]?.voteCounts).toEqual({
       up: 100,
       down: 0,
     });

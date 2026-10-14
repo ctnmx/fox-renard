@@ -91,6 +91,17 @@ TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres pnpm --fi
 
 Playwright starts the Worker under `wrangler dev`, as Cloudflare runs it, and drives it from the demo route sheet. Hyperdrive's local binding reaches the PostgreSQL that `TEST_DATABASE_URL` names: start one of your own, with a password in its URL. Claude Code cloud sessions start one and set `TEST_DATABASE_URL`. The tests live in `apps/cloudflare/tests`.
 
+### The console
+
+The console has no browser tests: Seam 1 covers every Member operation through the HTTP API, and Seam 3 checks that the Worker serves the console. To try it, run the demo with the console built, sign in as `membre@example.com`, and follow the sign-in link from http://localhost:8787/outbox:
+
+```sh
+pnpm build
+pnpm --filter @fox-renard/demo start
+```
+
+`pnpm --filter @fox-renard/console dev` serves the console with hot reload on http://localhost:5173, calling the demo's HTTP API.
+
 ### Before you push
 
 Run what CI runs:

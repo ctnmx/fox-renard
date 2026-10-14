@@ -11,6 +11,19 @@ export interface ReactionSet {
   options: ReactionOption[];
 }
 
+/** An Organization, as its Members see it on the console. */
+export interface Organization {
+  id: string;
+  name: string;
+}
+
+/** A person who signs in to an Organization's console to manage its Sites. */
+export interface Member {
+  id: string;
+  email: string;
+  organization: Organization;
+}
+
 export interface Site {
   id: string;
   name: string;
@@ -76,8 +89,20 @@ export interface CastVote {
 /** How many Visitors hold each Vote on a Comment. */
 export type VoteCounts = Record<Vote, number>;
 
-/** Whether a Comment is public, or a Pending Comment awaiting a Member's approval. */
-export type CommentStatus = "published" | "pending";
+/** The statuses a Member lists a Site's Comments by. */
+export const moderatedStatuses = ["published", "pending", "spam"] as const;
+
+/**
+ * Whether a Comment is public, a Pending Comment awaiting a Member's
+ * approval, or spam a Member set apart.
+ */
+export type ModeratedStatus = (typeof moderatedStatuses)[number];
+
+/**
+ * A Comment's status. A deleted Comment with Replies stays as a placeholder,
+ * so that its Replies keep their place.
+ */
+export type CommentStatus = ModeratedStatus | "deleted";
 
 /** A message a Commenter posted on a Page, in plain text. */
 export interface Comment {

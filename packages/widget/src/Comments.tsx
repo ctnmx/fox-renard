@@ -61,7 +61,7 @@ export function withVote(
   const voted = <C extends Comment>(comment: C): C =>
     comment.id === commentId ? { ...comment, voteCounts, vote } : comment;
   return comments.map((topLevel) => ({
-    ...voted(topLevel),
+    ...("deleted" in topLevel ? topLevel : voted(topLevel)),
     replies: topLevel.replies.map(voted),
   }));
 }
@@ -179,6 +179,16 @@ function CommentArticle({
           </button>
         </div>
       </div>
+    </article>
+  );
+}
+
+/** The place a deleted Comment keeps above its Replies, saying nothing of it. */
+function DeletedArticle() {
+  return (
+    <article class="comment deleted">
+      <span class="avatar" aria-hidden="true" />
+      <p class="comment-main">{t("deleted")}</p>
     </article>
   );
 }
@@ -444,18 +454,24 @@ export function Comments({
               setAnswering({ comment, topLevelCommentId: topLevel.id, opener });
           return (
             <li key={topLevel.id}>
-              <CommentArticle
-                page={page}
-                comment={topLevel}
-                onVoted={onVoted}
-                onReply={openReplyTo(topLevel)}
-              />
+              {"deleted" in topLevel ? (
+                <DeletedArticle />
+              ) : (
+                <CommentArticle
+                  page={page}
+                  comment={topLevel}
+                  onVoted={onVoted}
+                  onReply={openReplyTo(topLevel)}
+                />
+              )}
               {topLevel.replies.length > 0 && (
                 <ol
                   class="replies"
-                  aria-label={t("repliesTo", {
-                    name: topLevel.commenter.displayName,
-                  })}
+                  aria-label={
+                    "deleted" in topLevel
+                      ? t("repliesToDeleted")
+                      : t("repliesTo", { name: topLevel.commenter.displayName })
+                  }
                 >
                   {topLevel.replies.map((reply) => (
                     <li key={reply.id}>

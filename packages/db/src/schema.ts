@@ -33,6 +33,38 @@ export const members = pgTable("members", {
   createdAt: createdAt(),
 });
 
+/**
+ * A link that signs a Member in to the console, until it is followed or
+ * expires.
+ */
+export const signInLinks = pgTable(
+  "sign_in_links",
+  {
+    /** The SHA-256 of the link's token, which is never stored itself. */
+    tokenHash: text("token_hash").primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index().on(table.memberId), index().on(table.expiresAt)],
+);
+
+/** A Member's session on the console, until they sign out or it expires. */
+export const consoleSessions = pgTable(
+  "console_sessions",
+  {
+    /** The SHA-256 of the session cookie's token, which is never stored itself. */
+    tokenHash: text("token_hash").primaryKey(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index().on(table.memberId), index().on(table.expiresAt)],
+);
+
 export const sites = pgTable("sites", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: uuid("organization_id")
@@ -168,8 +200,13 @@ export const comments = pgTable(
     ),
     /** Plain text, as its Commenter wrote it. */
     text: text("text").notNull(),
-    /** Pending Comments wait for a Member's approval. */
-    status: text("status", { enum: ["published", "pending"] })
+    /**
+     * Pending Comments wait for a Member's approval, and spam stays apart. A
+     * deleted Comment with Replies leaves a placeholder.
+     */
+    status: text("status", {
+      enum: ["published", "pending", "spam", "deleted"],
+    })
       .notNull()
       .default("published"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),

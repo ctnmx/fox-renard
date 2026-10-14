@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { routeSheet, startTestApi, type TestApi, veloSheet } from "./harness";
+import {
+  routeSheet,
+  shownComments,
+  startTestApi,
+  type TestApi,
+  veloSheet,
+} from "./harness";
 
 let api: TestApi;
 
@@ -60,9 +66,12 @@ describe("a Guest posts a Comment", () => {
 
     await marie.post("Marie D.", "Et refaite en septembre.");
 
-    const { comments, commenter } = await marie.loadWidget();
-    expect(commenter).toEqual({ displayName: "Marie D.", verified: false });
-    expect(comments.map((comment) => comment.commenter)).toEqual([
+    const widget = await marie.loadWidget();
+    expect(widget.commenter).toEqual({
+      displayName: "Marie D.",
+      verified: false,
+    });
+    expect(shownComments(widget).map((comment) => comment.commenter)).toEqual([
       { displayName: "Marie D.", initials: "MD", verified: false },
       { displayName: "Marie", initials: "M", verified: false },
     ]);
@@ -82,9 +91,9 @@ describe("a Guest posts a Comment", () => {
       displayName: "Marie",
       verified: false,
     });
-    expect(onRectoVerso.comments.map(({ commenter }) => commenter)).toEqual([
-      { displayName: "Marie", initials: "M", verified: false },
-    ]);
+    expect(
+      shownComments(onRectoVerso).map(({ commenter }) => commenter),
+    ).toEqual([{ displayName: "Marie", initials: "M", verified: false }]);
   });
 
   test("Comments are listed newest first", async () => {
@@ -93,7 +102,7 @@ describe("a Guest posts a Comment", () => {
     api.clock.advance(60_000);
     await api.newBrowser().post("Paul", "Deuxième.");
 
-    const { comments } = await api.loadWidget();
+    const comments = shownComments(await api.loadWidget());
 
     expect(comments.map((comment) => comment.commenter.displayName)).toEqual([
       "Paul",
@@ -113,7 +122,7 @@ describe("a Comment is plain text", () => {
       "Trace ici : https://www.rectoverso.co/traces/aiguille.gpx.\n<b>Pas de balisage</b> (voir https://fr.wikipedia.org/wiki/Mont_Aiguille_(Vercors)).",
     );
 
-    expect(bodiesOf((await marie.loadWidget()).comments)).toEqual([
+    expect(bodiesOf(shownComments(await marie.loadWidget()))).toEqual([
       [
         { type: "text", text: "Trace ici : " },
         {
@@ -139,7 +148,7 @@ describe("a Comment is plain text", () => {
 
     await marie.post("Marie", "Cartes sur www.ign.fr, pas sur www.");
 
-    expect(bodiesOf((await marie.loadWidget()).comments)).toEqual([
+    expect(bodiesOf(shownComments(await marie.loadWidget()))).toEqual([
       [
         { type: "text", text: "Cartes sur " },
         { type: "link", url: "https://www.ign.fr", text: "www.ign.fr" },
@@ -155,7 +164,7 @@ describe("a Comment is plain text", () => {
       .newBrowser()
       .post("  Marie   Dupont ", "\r\n  Superbe.\r\nÀ refaire.  \n");
 
-    const [comment] = (await api.loadWidget()).comments;
+    const [comment] = shownComments(await api.loadWidget());
     expect(comment?.commenter.displayName).toBe("Marie Dupont");
     expect(comment?.body).toEqual([
       { type: "text", text: "Superbe.\nÀ refaire." },

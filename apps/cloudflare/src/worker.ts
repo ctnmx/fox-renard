@@ -17,6 +17,11 @@ interface Env {
   EMAIL_SENDER_ADDRESS: string;
   /** The secret that signs the bot check's challenges. */
   ALTCHA_HMAC_KEY: string;
+  /**
+   * Where the console answers, for the links emailed to Members. Previews
+   * leave it unset: they serve the console on their own address.
+   */
+  CONSOLE_ORIGIN?: string;
 }
 
 function notWiredYet(piece: string) {
@@ -31,7 +36,7 @@ const photos: PhotoStore = {
 };
 
 /** Core on Cloudflare's adapters, with a database connection that `close` ends. */
-function openCore(env: Env) {
+function openCore(env: Env, consoleOrigin: string) {
   // A Worker cannot share a connection between requests; Hyperdrive pools
   // the connections to the database instead.
   const database = connectPostgres(env.HYPERDRIVE.connectionString);
@@ -45,13 +50,19 @@ function openCore(env: Env) {
     photos,
     botCheck: createAltchaBotCheck({ hmacKey: env.ALTCHA_HMAC_KEY }),
     fingerprintSecret: { current: async () => env.FINGERPRINT_SECRET },
+    consoleOrigin,
   });
   return { core, close: database.close };
 }
 
 export default {
   async fetch(request, env, ctx) {
-    const { core, close } = openCore(env);
+    // Cloudflare routes a request to the Worker by its host, so the host is
+    // always one of the Worker's own, which also serve the console.
+    const { core, close } = openCore(
+      env,
+      env.CONSOLE_ORIGIN ?? new URL(request.url).origin,
+    );
     try {
       // Cloudflare tells the client's IP address in CF-Connecting-IP.
       return await createApp(core, { getConnInfo }).fetch(request, env, ctx);
@@ -64,7 +75,8 @@ export default {
   // nobody verified goes within an hour of its magic link expiring, and the
   // bot check forgets the challenges that expired.
   async scheduled(_controller, env) {
-    const { core, close } = openCore(env);
+    // The erasure emails nobody, so it needs no console origin.
+    const { core, close } = openCore(env, env.CONSOLE_ORIGIN ?? "");
     try {
       await core.eraseExpired();
     } finally {

@@ -3,6 +3,7 @@ import {
   anotherSite,
   optionId,
   routeSheet,
+  shownComments,
   startTestApi,
   type TestApi,
   veloSheet,
@@ -25,7 +26,7 @@ describe("a Guest verifies their email by magic link", () => {
       .post("Marie", "Superbe boucle.", { email: "marie@example.com" });
 
     expect(posted.magicLinkSent).toBe(true);
-    expect(api.outbox.sent).toEqual([
+    expect(api.emailsTo("marie@example.com")).toEqual([
       {
         to: "marie@example.com",
         senderName: "Recto Verso via Fox Renard",
@@ -60,7 +61,7 @@ describe("a Guest verifies their email by magic link", () => {
     }
 
     expect(sent).toEqual([true, true, true, false]);
-    expect(api.outbox.sent).toHaveLength(3);
+    expect(api.emailsTo("marie@example.com")).toHaveLength(3);
     api.clock.advance(hour);
     const later = await api
       .newBrowser()
@@ -82,7 +83,7 @@ describe("a Guest verifies their email by magic link", () => {
       email: "marie@example.com",
     });
 
-    const [email] = api.outbox.sent;
+    const [email] = api.emailsTo("marie@example.com");
     expect(email?.text).toContain("sur Recto Verso");
     expect(email?.text).not.toContain("piege.example");
   });
@@ -101,7 +102,7 @@ describe("a Guest verifies their email by magic link", () => {
       email: "marie@example.com",
     });
 
-    expect(api.outbox.sent).toEqual([]);
+    expect(api.emailsTo("marie@example.com")).toEqual([]);
   });
 
   test("following the link makes the Commenter verified, with the badge on all their Comments", async () => {
@@ -123,9 +124,9 @@ describe("a Guest verifies their email by magic link", () => {
       displayName: "Marie",
       verified: true,
     });
-    const { commenter, comments } = await marie.loadWidget();
-    expect(commenter).toEqual({ displayName: "Marie", verified: true });
-    expect(comments.map((comment) => comment.commenter)).toEqual([
+    const widget = await marie.loadWidget();
+    expect(widget.commenter).toEqual({ displayName: "Marie", verified: true });
+    expect(shownComments(widget).map((comment) => comment.commenter)).toEqual([
       { displayName: "Paul", initials: "P", verified: false },
       { displayName: "Marie", initials: "M", verified: true },
       { displayName: "Marie", initials: "M", verified: true },
@@ -187,12 +188,11 @@ describe("only a browser that followed a magic link acts as the Verified Comment
     api.clock.advance(60_000);
     await phone.post("Marie", "Et le retour par les Pellas.");
 
-    const { commenter, comments } = await phone.loadWidget();
-    expect(commenter).toEqual({ displayName: "Marie", verified: true });
-    expect(comments.map((comment) => comment.commenter.verified)).toEqual([
-      true,
-      true,
-    ]);
+    const widget = await phone.loadWidget();
+    expect(widget.commenter).toEqual({ displayName: "Marie", verified: true });
+    expect(
+      shownComments(widget).map((comment) => comment.commenter.verified),
+    ).toEqual([true, true]);
   });
 
   test("the browser that follows a link brings the Comments it posted as a Guest, even when another browser asked", async () => {
@@ -207,7 +207,7 @@ describe("only a browser that followed a magic link acts as the Verified Comment
     await phone.followMagicLink(api.magicLinkTo("marie@example.com"));
 
     expect(
-      (await api.loadWidget()).comments.map(
+      shownComments(await api.loadWidget()).map(
         ({ commenter }) => commenter.verified,
       ),
     ).toEqual([true, true]);
@@ -227,7 +227,7 @@ describe("only a browser that followed a magic link acts as the Verified Comment
     api.clock.advance(60_000);
     await laptop.post("Marie", "Posté depuis le portable.");
     expect(
-      (await api.loadWidget()).comments.map(({ commenter }) => commenter),
+      shownComments(await api.loadWidget()).map(({ commenter }) => commenter),
     ).toEqual([
       { displayName: "Marie", initials: "M", verified: false },
       { displayName: "Marie", initials: "M", verified: true },
@@ -257,9 +257,9 @@ describe("a Verified Commenter links another browser", () => {
 
     await phone.followMagicLink(api.magicLinkTo("marie@example.com"));
 
-    const { commenter, comments } = await phone.loadWidget();
-    expect(commenter).toMatchObject({ verified: true });
-    expect(comments.map((comment) => comment.commenter)).toEqual([
+    const widget = await phone.loadWidget();
+    expect(widget.commenter).toMatchObject({ verified: true });
+    expect(shownComments(widget).map((comment) => comment.commenter)).toEqual([
       { displayName: "Marie D.", initials: "MD", verified: true },
       { displayName: "Marie", initials: "M", verified: true },
     ]);
@@ -280,7 +280,7 @@ describe("a Verified Commenter links another browser", () => {
       email: "paul@example.com",
     });
 
-    expect(api.outbox.sent.map(({ to }) => to)).toEqual(["marie@example.com"]);
+    expect(api.emailsTo("paul@example.com")).toEqual([]);
   });
 
   test("following a link someone else asked for with your email leaves their Comments theirs", async () => {
@@ -298,7 +298,7 @@ describe("a Verified Commenter links another browser", () => {
       verified: false,
     });
     expect(
-      (await api.loadWidget()).comments.map(
+      shownComments(await api.loadWidget()).map(
         ({ commenter }) => commenter.verified,
       ),
     ).toEqual([false, true]);
@@ -320,7 +320,7 @@ describe("a Commenter exists within one Site only (ADR-0005)", () => {
       email: "marie@example.com",
     });
 
-    expect(api.outbox.sent.at(-1)).toMatchObject({
+    expect(api.emailsTo("marie@example.com").at(-1)).toMatchObject({
       to: "marie@example.com",
       senderName: "Carnets de vélo via Fox Renard",
       text: expect.stringContaining(`${veloSheet.url}#fox-renard-magic-link=`),

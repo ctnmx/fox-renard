@@ -2,6 +2,7 @@
  * In-memory adapters for the ports that reach the outside world, so tests and
  * the local demo can drive and observe Fox Renard without real services.
  */
+import { signInPath } from "./console";
 import { magicLinkParameter } from "./core";
 import type {
   BotChallenge,
@@ -34,6 +35,12 @@ export class ControllableClock implements Clock {
 /** The magic link an email's text carries, as its recipient would follow it. */
 export function magicLinkIn(text: string): string | null {
   const link = new RegExp(`https?://\\S+#${magicLinkParameter}=\\S+`);
+  return link.exec(text)?.[0] ?? null;
+}
+
+/** The sign-in link an email's text carries, as the Member would follow it. */
+export function signInLinkIn(text: string): string | null {
+  const link = new RegExp(`https?://\\S+${signInPath}#token=\\S+`);
   return link.exec(text)?.[0] ?? null;
 }
 

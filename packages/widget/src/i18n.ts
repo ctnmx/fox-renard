@@ -35,6 +35,8 @@ const fr = {
   reply: "Répondre",
   replyTo: "Répondre à {name}",
   repliesTo: "Réponses à {name}",
+  repliesToDeleted: "Réponses à un commentaire supprimé",
+  deleted: "Commentaire supprimé",
   replyLabel: "Ta réponse",
   replyPlaceholder: "Écris ta réponse",
   cancel: "Annuler",

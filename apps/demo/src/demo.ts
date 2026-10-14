@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAltchaBotCheck } from "@fox-renard/altcha";
 import { createApp } from "@fox-renard/api";
@@ -12,6 +13,7 @@ import { createStore, seed } from "@fox-renard/db";
 import { createPgliteDatabase } from "@fox-renard/db/pglite";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { apiOrigin } from "./addresses";
 import { serveRouteSheet } from "./route-sheet";
@@ -33,6 +35,8 @@ export async function startDemo(): Promise<void> {
     // The real bot check, so that Seam 2 drives the Widget's solver.
     botCheck: createAltchaBotCheck({ hmacKey: "demo-altcha-key" }),
     fingerprintSecret: new FixedFingerprintSecret(),
+    // The demo serves the console with the API.
+    consoleOrigin: apiOrigin,
   });
 
   // Like the platform in production, erase what has expired every hour:
@@ -46,8 +50,12 @@ export async function startDemo(): Promise<void> {
   const widgetScript = fileURLToPath(
     import.meta.resolve("@fox-renard/widget/widget.js"),
   );
+  // Built by `pnpm --filter @fox-renard/console build`.
+  const consolePage = fileURLToPath(
+    import.meta.resolve("@fox-renard/console/index.html"),
+  );
 
-  const apiAndWidgetScript = new Hono()
+  const foxRenard = new Hono()
     .get("/widget.js", async (c) =>
       c.body(await readFile(widgetScript), 200, {
         "Content-Type": "text/javascript; charset=utf-8",
@@ -55,10 +63,17 @@ export async function startDemo(): Promise<void> {
     )
     // The emails Fox Renard sent, so that Seam 2 can follow a magic link.
     .get("/outbox", (c) => c.json(outbox.sent))
-    .route("/", createApp(core, { getConnInfo }));
+    .route("/", createApp(core, { getConnInfo }))
+    // The console, served with the API on one origin, as the Worker does.
+    .get(
+      "/assets/*",
+      // Relative, from where the demo runs, as serveStatic takes it.
+      serveStatic({ root: relative(process.cwd(), dirname(consolePage)) }),
+    )
+    .get("*", async (c) => c.html(await readFile(consolePage, "utf8")));
 
   serve({
-    fetch: apiAndWidgetScript.fetch,
+    fetch: foxRenard.fetch,
     port: Number(new URL(apiOrigin).port),
   });
   serveRouteSheet(apiOrigin);

@@ -3,7 +3,10 @@ import type { App } from "./app";
 
 export {
   type CommentSort,
+  type ModeratedStatus,
   magicLinkParameter,
+  moderatedStatuses,
+  signInPath,
   type Vote,
 } from "@fox-renard/core";
 

@@ -261,7 +261,7 @@ if ! keep_secret CLOUDFLARE_API_TOKEN; then
   step "Add two permissions: Account · Hyperdrive · Edit, and Zone · DNS · Edit."
   step "Scope it to your account, and to the zone foxrenard.com only."
   step "Create the token and copy it."
-  note "Hyperdrive: CI points each deployment at its database. DNS: the first deploy creates embed.foxrenard.com."
+  note "Hyperdrive: CI points each deployment at its database. DNS: the first deploy creates embed.foxrenard.com and console.foxrenard.com."
   ask_secret CLOUDFLARE_API_TOKEN "Paste the API token:"
   set_secret CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
 fi
@@ -351,8 +351,7 @@ pause "Authenticated? Brevo can take up to 48 hours. Press Enter"
 stage "Turn deployments on"
 say "Setting the variable CLOUDFLARE_ACCOUNT_ID turns deployments on: merging to"
 say "main deploys production, and each pull request gets a preview."
-note "The first deployment creates embed.foxrenard.com, so foxrenard.com must be Active."
-note "console.foxrenard.com stays free for the Member console."
+note "The first deployment creates embed.foxrenard.com and console.foxrenard.com, so foxrenard.com must be Active."
 if confirm "Is foxrenard.com Active on Cloudflare, and should deployments start?"; then
   set_var CLOUDFLARE_ACCOUNT_ID "$CLOUDFLARE_ACCOUNT_ID"
   if confirm "Deploy main to production now?"; then

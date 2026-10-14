@@ -1,15 +1,15 @@
 # Deploy
 
-Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`) serves the HTTP API and the Widget script. PostgreSQL runs on Neon in Frankfurt, and the Worker reaches it through Hyperdrive. Brevo sends the emails.
+Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`) serves the HTTP API, the Widget script and the Member console. PostgreSQL runs on Neon in Frankfurt, and the Worker reaches it through Hyperdrive. Brevo sends the emails.
 
 ## Where Fox Renard answers
 
 | Host | Serves |
 | --- | --- |
 | `embed.foxrenard.com` | The Widget script and the HTTP API. The Widget calls the API on its script's own origin, so they share it. |
-| `console.foxrenard.com` | The Member console, once #14 lands. |
+| `console.foxrenard.com` | The Member console, and the HTTP API it calls on its own origin, where its session cookie goes. Sign-in links point here. |
 | `mail.foxrenard.com` | The sender domain Brevo authenticates. Every email comes from `noreply@mail.foxrenard.com`. |
-| `pr-<number>-fox-renard.<subdomain>.workers.dev` | The preview of a pull request. |
+| `pr-<number>-fox-renard.<subdomain>.workers.dev` | The preview of a pull request: the Widget script, the console and the HTTP API on one address. |
 | `foxrenard.com` | Free for a landing page. |
 
 A Site embeds the Widget with `<script async src="https://embed.foxrenard.com/widget.js"></script>`.
@@ -18,7 +18,7 @@ A Site embeds the Widget with `<script async src="https://embed.foxrenard.com/wi
 
 CI (`.github/workflows/ci.yml`) deploys once the `check` job passes:
 
-- **Merging to `main`** deploys production. CI migrates the production database, runs the seed, points Hyperdrive at the database, deploys the Worker with its secrets, then runs the smoke check against `embed.foxrenard.com`.
+- **Merging to `main`** deploys production. CI migrates the production database, runs the seed, builds the Widget and the console, points Hyperdrive at the database, deploys the Worker with its secrets, then runs the smoke check against `embed.foxrenard.com` and `console.foxrenard.com`.
 - **Each pull request** gets a preview: a Neon branch `pr-<number>` of the preview project, migrated and seeded, its own Hyperdrive config, and a Cloudflare preview of the Worker. The smoke check runs against it, and the pull request links it as a `preview` deployment.
 - **Closing a pull request** deletes its preview, its Hyperdrive config and its Neon branch (`apps/cloudflare/scripts/delete-preview.sh`). A preview job that finds its pull request closed when it ends deletes them too.
 
@@ -27,9 +27,17 @@ Some rules hold for every deployment:
 - **Migrations run before the Worker deploys.** A migration must therefore keep the Worker version already running working.
 - **The seed is idempotent.** It creates Recto Verso's Organization, Member, Site, Allowed Domains and Reaction Set once, and changes nothing afterward.
 - **Previews never hold production data** (ADR-0008). Their branches belong to a second Neon project, and their seed uses the demo Member `membre@example.com`.
-- **The smoke check** serves the demo route sheet on `localhost` and loads it against the deployment. It sees the Reaction Set, as Seam 3's `@smoke` test does locally. It adds one Page, `article-smoke-check`, to Recto Verso's Site, which is why `localhost` is one of its Allowed Domains.
+- **The smoke check** serves the demo route sheet on `localhost` and loads it against the deployment. It sees the Reaction Set, and the console's sign-in page, as Seam 3's `@smoke` tests do locally. It adds one Page, `article-smoke-check`, to Recto Verso's Site, which is why `localhost` is one of its Allowed Domains.
 - **Previews run no Cron Trigger.** Cloudflare runs the hourly erasure on production only.
   _Contradicts ADR-0006 on previews, but worth accepting:_ a preview erases expired fingerprints only when someone reacts or votes there, and keeps expired magic links, with their emails, until its pull request closes. Previews hold only the data of people testing them, and Cloudflare runs no Cron Trigger on a preview.
+
+## The console
+
+The console (`apps/console`) is a single-page app among the Worker's static assets, which `pnpm build` gathers into `apps/cloudflare/dist`. Any address of the console's opens its page, except `/v1/*`, which runs the Worker for the HTTP API.
+
+The Worker builds the links it emails Members from the `CONSOLE_ORIGIN` variable of `wrangler.jsonc`, never from a request's `Origin`, which its client can forge. Previews leave it unset and link to the address the request reached, which Cloudflare routed to the Worker by that very host.
+
+A Member's session is an opaque token in a cookie, stored only as its hash, so it needs no secret (ADR-0009). Signing out, or deleting the Member, ends it.
 
 ## Set it up
 
@@ -84,7 +92,7 @@ Everything stays within free plans (ADR-0002). These are the limits Fox Renard c
 
 | Service | Limit | What reaches it |
 | --- | --- | --- |
-| Workers | 100,000 requests a day | Every API request. Requests for `widget.js` hit a static asset, which is free and unlimited. |
+| Workers | 100,000 requests a day | Every API request. Requests for `widget.js` and the console's files hit static assets, which are free and unlimited. |
 | Workers | 10 ms of CPU per request and per Cron Trigger | A request over it fails with error 1102. |
 | Workers | 5 Cron Triggers per account | Fox Renard uses 1. |
 | Workers | 100 previews per Worker | Past it, Cloudflare deletes the least recently deployed. |
@@ -93,7 +101,7 @@ Everything stays within free plans (ADR-0002). These are the limits Fox Renard c
 | Neon | 10 branches per project | The preview project holds its root plus one per open preview. |
 | Neon | 100 compute-hours a month per project | Production's 0.25 CU compute runs 400 hours a month at most. Each request and the hourly erasure wake it, and it suspends after 5 minutes idle. Hyperdrive may hold idle connections for up to 10 minutes, which can keep it awake longer. |
 | Neon | 1 GB of storage per project, 5 GB of egress a month | Comments, Reactions and Votes. |
-| Brevo | 300 emails a day | Magic links. Core caps an address at 3 working magic links per Site. Previews share this quota. |
+| Brevo | 300 emails a day | Magic links, sign-in links, and one email per Member for each new Comment. Core caps an address at 3 working magic links per Site, and a Member at 3 working sign-in links. Previews share this quota. |
 
 Together, Hyperdrive's configs and the preview project's branches allow 9 open previews at once. A tenth preview fails to deploy until a pull request closes.
 
