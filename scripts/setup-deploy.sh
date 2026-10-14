@@ -311,11 +311,13 @@ if ! keep_secret SEED_MEMBER_EMAIL; then
   set_secret SEED_MEMBER_EMAIL "$SEED_MEMBER_EMAIL"
 fi
 
-stage "Fingerprint secrets"
-say "Core derives each day's fingerprint key from a secret (ADR-0006). This"
-say "stage generates one for production and one for previews: nobody needs to see them."
-note "Replacing one only resets the day's abuse limits."
-for name in FINGERPRINT_SECRET PREVIEW_FINGERPRINT_SECRET; do
+stage "Generated secrets"
+say "This stage generates the secrets nobody needs to see, one for production"
+say "and one for previews of each:"
+note "the fingerprint secret, which Core derives each day's fingerprint key from (ADR-0006);"
+note "the ALTCHA key, which signs the bot check's challenges."
+note "Replacing one only resets the day's abuse limits, or the challenges under way."
+for name in FINGERPRINT_SECRET PREVIEW_FINGERPRINT_SECRET ALTCHA_HMAC_KEY PREVIEW_ALTCHA_HMAC_KEY; do
   keep_secret "$name" || set_secret "$name" "$(openssl rand -hex 32)"
 done
 

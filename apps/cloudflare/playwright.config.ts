@@ -25,6 +25,7 @@ const worker = {
     "--var FINGERPRINT_SECRET:seam-3-fingerprint-secret",
     // Seam 3 sends no email.
     "--var BREVO_API_KEY:seam-3-sends-no-email",
+    "--var ALTCHA_HMAC_KEY:seam-3-altcha-key",
   ].join(" "),
   url: `${apiOrigin}/widget.js`,
   env: {

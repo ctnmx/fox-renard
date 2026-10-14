@@ -27,6 +27,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The proje
 | Database | `packages/db` | PostgreSQL schema, migrations and seed (Drizzle). |
 | HTTP API | `packages/api` | Public endpoints (Hono) and the typed client. |
 | Brevo | `packages/brevo` | The email adapter Fox Renard sends through in production. |
+| ALTCHA | `packages/altcha` | The invisible bot check the Widget solves before posting. |
 | Widget | `packages/widget` | The `<fox-renard-widget>` custom element (Preact). |
 | Demo | `apps/demo` | A local route sheet embedding the Widget. |
 | Cloudflare | `apps/cloudflare` | The Worker that runs Fox Renard in production. |

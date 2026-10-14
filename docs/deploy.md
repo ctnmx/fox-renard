@@ -58,6 +58,8 @@ Its last stage sets `CLOUDFLARE_ACCOUNT_ID`, which turns the deploy jobs on, and
 | secret | `NEON_API_KEY` | Creates and deletes preview branches, in the preview project only. |
 | secret | `FINGERPRINT_SECRET` | The secret production derives each day's fingerprint key from (ADR-0006). |
 | secret | `PREVIEW_FINGERPRINT_SECRET` | The same, for previews. |
+| secret | `ALTCHA_HMAC_KEY` | Signs production's bot check challenges. |
+| secret | `PREVIEW_ALTCHA_HMAC_KEY` | The same, for previews. |
 | secret | `BREVO_API_KEY` | Sends the emails, from production and previews alike. |
 
 Pull requests from forks get no secrets, so they get no preview.
@@ -67,8 +69,8 @@ Pull requests from forks get no secrets, so they get no preview.
 A ticket that needs a secret, a binding or a schedule wires it here (see CLAUDE.md):
 
 - **A secret**:
-  - add a stage to `scripts/setup-deploy.sh` that sets it as a GitHub secret;
-  - add it to both `jq -n` lines of `ci.yml`, production and preview;
+  - add a stage to `scripts/setup-deploy.sh` that sets it as a GitHub secret, or add a secret nobody needs to see to its "Generated secrets" stage;
+  - add its name to both `jq -n` secrets lists of `ci.yml`, production and preview, and its value to their `env`;
   - declare it in `Env` in `apps/cloudflare/src/worker.ts`;
   - give Seam 3 a test value with `--var` in `apps/cloudflare/playwright.config.ts`.
 - **A binding**, such as an R2 bucket:

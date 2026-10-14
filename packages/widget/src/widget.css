@@ -284,6 +284,24 @@
   color: #6b6b6b;
 }
 
+.pending {
+  margin-inline-start: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fdf3e1;
+  color: #7a4b00;
+  font-size: 12px;
+}
+
+/* Off screen rather than display: none, which a bot would notice. */
+.trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
 .body {
   margin: 4px 0 0;
   white-space: pre-line;

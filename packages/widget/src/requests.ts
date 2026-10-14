@@ -120,6 +120,17 @@ export async function followMagicLink(
   return followed;
 }
 
+/** A bot check's challenge, and how many milliseconds until its solution may post. */
+export async function fetchBotChallenge({ client, siteId }: PageConnection) {
+  const response = await client.v1.sites[":siteId"]["bot-challenge"].$get({
+    param: { siteId },
+  });
+  if (response.status !== 200) {
+    throw new Error(`Fox Renard: the bot check answered ${response.status}.`);
+  }
+  return response.json();
+}
+
 /**
  * Posts a Comment, or a Reply to the Comment `replyTo` names. An email asks
  * for a magic link to verify it.
@@ -127,6 +138,8 @@ export async function followMagicLink(
 export async function postComment(
   page: PageConnection,
   comment: {
+    botCheck: string;
+    honeypot: string;
     displayName: string;
     text: string;
     replyTo?: string;

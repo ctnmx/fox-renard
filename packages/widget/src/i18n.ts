@@ -27,6 +27,11 @@ const fr = {
   invalidDisplayName: "Ton nom est vide ou trop long.",
   emptyComment: "Ton commentaire est vide.",
   commentTooLong: "Ton commentaire est trop long.",
+  rateLimited:
+    "Tu as publié beaucoup de commentaires aujourd'hui. Réessaie demain.",
+  pending: "En attente d'approbation",
+  postedPending:
+    "Ton commentaire contient un lien : il est en attente d'approbation. En attendant, il n'est visible que pour toi.",
   reply: "Répondre",
   replyTo: "Répondre à {name}",
   repliesTo: "Réponses à {name}",

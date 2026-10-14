@@ -231,6 +231,34 @@ test.describe("Comments on a route sheet", () => {
     expect(thirdPartyRequests).toEqual([]);
   });
 
+  test("a Guest's Comment with a link awaits approval: its Commenter sees it marked, another browser does not", async ({
+    page,
+    browser,
+  }) => {
+    // A route sheet of its own, so it starts with no Comment.
+    const routeSheet = `/article/essai-${randomUUID()}`;
+    await page.goto(routeSheet);
+    const widget = await scrollToWidget(page);
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Mes photos du tour : https://photos.example/aiguille");
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    await expect(widget.getByRole("status")).toContainText(
+      "en attente d'approbation",
+    );
+    await expect(widget.getByRole("article")).toContainText(
+      "En attente d'approbation",
+    );
+
+    const elsewhere = await (await browser.newContext()).newPage();
+    await elsewhere.goto(routeSheet);
+    const otherWidget = await scrollToWidget(elsewhere);
+    await expect(otherWidget.getByText(prompt)).toBeVisible();
+    await expect(otherWidget.getByRole("article")).toHaveCount(0);
+  });
+
   test("a Comment over the length limit is refused with a message", async ({
     page,
   }) => {

@@ -1,5 +1,6 @@
 import type { CommentSort, Vote, WidgetData } from "@fox-renard/api/client";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
+import { useBotCheck } from "./bot-check";
 import { locale, type MessageKey, t } from "./i18n";
 import { relativeDate } from "./relative-date";
 import { type PageConnection, postComment, putVote, Refused } from "./requests";
@@ -27,6 +28,7 @@ const refusals: Record<string, MessageKey> = {
   invalid_display_name: "invalidDisplayName",
   empty_comment: "emptyComment",
   comment_too_long: "commentTooLong",
+  rate_limited: "rateLimited",
 };
 
 /**
@@ -163,6 +165,7 @@ function CommentArticle({
           >
             {relativeDate(new Date(comment.createdAt))}
           </time>
+          {comment.pending && <span class="pending">{t("pending")}</span>}
         </p>
         <Body body={comment.body} />
         <div class="comment-actions">
@@ -209,12 +212,14 @@ function CommentForm({
   onCancel?: () => void;
 }) {
   const [text, setText] = useState("");
+  const [honeypot, setHoneypot] = useState("");
   const [posting, setPosting] = useState(false);
   const [failure, setFailure] = useState<MessageKey>();
   const headingId = useId();
   const emailHintId = useId();
   const displayNameInput = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
+  const botCheck = useBotCheck(page);
 
   // A Reply form opens on its first empty field.
   useEffect(() => {
@@ -232,15 +237,17 @@ function CommentForm({
     setFailure(undefined);
     try {
       const given = (asksEmail && email.trim()) || undefined;
-      onPosted(
-        await postComment(page, {
+      const posted = await botCheck.post((solution) =>
+        postComment(page, {
+          botCheck: solution,
+          honeypot,
           displayName,
           text,
           replyTo: answering?.id,
           email: given,
         }),
-        given,
       );
+      onPosted(posted, given);
       setText("");
     } catch (error) {
       console.error(error);
@@ -272,7 +279,10 @@ function CommentForm({
           autocomplete="nickname"
           required
           value={displayName}
-          onInput={(event) => onDisplayName(event.currentTarget.value)}
+          onInput={(event) => {
+            botCheck.start();
+            onDisplayName(event.currentTarget.value);
+          }}
         />
       </label>
       {asksEmail && (
@@ -304,8 +314,21 @@ function CommentForm({
         required
         rows={3}
         value={text}
-        onInput={(event) => setText(event.currentTarget.value)}
+        onInput={(event) => {
+          botCheck.start();
+          setText(event.currentTarget.value);
+        }}
       />
+      {/* Hidden from people and their tools, so that only a bot fills it in. */}
+      <div class="trap" aria-hidden="true">
+        <input
+          name="subject"
+          tabIndex={-1}
+          autocomplete="off"
+          value={honeypot}
+          onInput={(event) => setHoneypot(event.currentTarget.value)}
+        />
+      </div>
       {failure && (
         <p class="form-error" role="alert">
           {t(failure)}
@@ -352,19 +375,24 @@ export function Comments({
   // The browser's Commenter fills in the display name, so it is typed once.
   const [displayName, setDisplayName] = useState(commenter?.displayName ?? "");
   const [email, setEmail] = useState("");
-  // What became of the magic link the latest Comment asked for.
-  const [magicLinkNotice, setMagicLinkNotice] = useState<string>();
+  // What became of the latest Comment, and of the magic link it asked for.
+  const [notices, setNotices] = useState<string[]>([]);
   const [answering, setAnswering] = useState<Answering>();
   const asksEmail = !commenter?.verified;
 
   const afterPosting: OnPosted = (posted, email) => {
     onPosted(posted);
-    if (email === undefined) return;
-    setMagicLinkNotice(
+    const pending = posted.comment.pending ? [t("postedPending")] : [];
+    if (email === undefined) {
+      setNotices(pending);
+      return;
+    }
+    setNotices([
+      ...pending,
       posted.magicLinkSent
         ? t("magicLinkSent", { email })
         : t("magicLinkNotSent"),
-    );
+    ]);
     setEmail("");
   };
 
@@ -385,9 +413,9 @@ export function Comments({
         asksEmail={asksEmail}
         onPosted={afterPosting}
       />
-      {magicLinkNotice && (
+      {notices.length > 0 && (
         <p class="notice" role="status">
-          {magicLinkNotice}
+          {notices.join(" ")}
         </p>
       )}
       {comments.length > 1 && (
