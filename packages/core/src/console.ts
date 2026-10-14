@@ -253,7 +253,11 @@ export function createConsole({
       const site = await siteOf(member, request.siteId);
       if (!site) return { outcome: "site-not-found" };
 
-      const comments = await store.listSiteComments(site.id, request);
+      const { status, pageKey } = request;
+      const comments = await store.listSiteComments(site.id, {
+        status,
+        pageKey,
+      });
       return { outcome: "listed", comments: comments.map(moderatedView) };
     },
 
