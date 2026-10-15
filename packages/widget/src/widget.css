@@ -284,6 +284,17 @@
   color: #6b6b6b;
 }
 
+.deleted .avatar {
+  background: #ebe8e2;
+}
+
+.deleted .comment-main {
+  margin: 0;
+  align-self: center;
+  color: #6b6b6b;
+  font-style: italic;
+}
+
 .pending {
   margin-inline-start: 8px;
   padding: 1px 6px;

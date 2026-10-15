@@ -2,8 +2,9 @@ import { apiOrigin, siteOrigin } from "@fox-renard/demo/addresses";
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * The deployment the smoke check loads the route sheet against. Without one,
- * Seam 3 runs the Worker locally on the demo's API origin.
+ * The deployment the smoke check loads the route sheet against, and its
+ * console against FOX_RENARD_CONSOLE_ORIGIN when it answers elsewhere.
+ * Without one, Seam 3 runs the Worker locally on the demo's API origin.
  */
 const deploymentOrigin = process.env.FOX_RENARD_API_ORIGIN;
 
@@ -23,9 +24,12 @@ const worker = {
     "--test-scheduled",
     "--show-interactive-dev-session=false",
     "--var FINGERPRINT_SECRET:seam-3-fingerprint-secret",
-    // Seam 3 sends no email.
+    // Brevo refuses this key, so Seam 3 sends no email: a Member's email
+    // about a new Comment fails, and the Comment posts all the same.
     "--var BREVO_API_KEY:seam-3-sends-no-email",
     "--var ALTCHA_HMAC_KEY:seam-3-altcha-key",
+    // The links emailed to Members point at the local console.
+    `--var CONSOLE_ORIGIN:${apiOrigin}`,
   ].join(" "),
   url: `${apiOrigin}/widget.js`,
   env: {

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
-    "e2e": "pnpm --filter @fox-renard/widget build && playwright test",
+    "build": "node scripts/assets.mjs",
+    "e2e": "pnpm --filter \"@fox-renard/cloudflare...\" build && playwright test",
     "smoke": "playwright test --grep @smoke"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
+    "@fox-renard/console": "workspace:*",
     "@fox-renard/demo": "workspace:*",
     "@fox-renard/widget": "workspace:*",
     "@playwright/test": "catalog:",

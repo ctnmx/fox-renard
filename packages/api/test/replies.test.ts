@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, test } from "vitest";
-import { routeSheet, startTestApi, type TestApi } from "./harness";
+import {
+  routeSheet,
+  shownComments,
+  startTestApi,
+  type TestApi,
+} from "./harness";
 
 const otherRouteSheet = {
   ...routeSheet,
@@ -103,7 +108,7 @@ describe("a Reply is listed in the conversation's order", () => {
       });
     }
 
-    const { comments } = await api.loadWidget();
+    const comments = shownComments(await api.loadWidget());
 
     expect(
       comments.map(({ commenter, replies }) => [
@@ -146,7 +151,7 @@ describe("a Reply is refused and publishes nothing", () => {
 
     expect(response.status).toBe(status);
     expect(
-      (await marie.loadWidget()).comments.map(({ commenter, replies }) => ({
+      shownComments(await marie.loadWidget()).map(({ commenter, replies }) => ({
         commenter,
         replies,
       })),

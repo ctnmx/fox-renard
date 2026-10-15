@@ -41,6 +41,33 @@ test("the Widget shows Recto Verso's Reaction Set", { tag: "@smoke" }, async ({
   ]);
 });
 
+/** Where the console answers: the deployment's console host, or the local Worker. */
+const consoleOrigin =
+  process.env.FOX_RENARD_CONSOLE_ORIGIN ??
+  process.env.FOX_RENARD_API_ORIGIN ??
+  apiOrigin;
+
+test("the Worker serves the console, which asks a signed-out Member for their email", {
+  tag: "@smoke",
+}, async ({ page }) => {
+  await page.goto(`${consoleOrigin}/`);
+
+  await expect(page).toHaveURL(`${consoleOrigin}/sign-in`);
+  await expect(page.getByLabel("Adresse email")).toBeVisible();
+});
+
+test("an address of the console's opens its page, while the HTTP API keeps its own", async ({
+  page,
+  request,
+}) => {
+  await page.goto(`${consoleOrigin}/sign-in`);
+  await expect(page.getByLabel("Adresse email")).toBeVisible();
+
+  const signedOut = await request.get(`${consoleOrigin}/v1/console/home`);
+  expect(signedOut.status()).toBe(401);
+  expect(await signedOut.json()).toEqual({ error: "signed_out" });
+});
+
 test("a Visitor's Reaction still counts after a reload", async ({ page }) => {
   // A route sheet of its own, so its counts start at zero.
   await page.goto(`/article/seam-3-${randomUUID()}`);

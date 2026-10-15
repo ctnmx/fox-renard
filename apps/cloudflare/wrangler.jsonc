@@ -6,15 +6,30 @@
   "compatibility_date": "2026-10-06",
   // postgres.js reaches Hyperdrive through Node's socket modules.
   "compatibility_flags": ["nodejs_compat"],
-  // widget.js, served without running the Worker.
-  "assets": { "directory": "../../packages/widget/dist" },
-  // The Widget calls the API on its script's own origin.
-  "routes": [{ "pattern": "embed.foxrenard.com", "custom_domain": true }],
+  // widget.js and the console, served without running the Worker on every
+  // host it answers. `pnpm build` gathers them into dist/.
+  "assets": {
+    "directory": "./dist",
+    // The console is a single-page app: any address of its opens its page.
+    "not_found_handling": "single-page-application",
+    // The HTTP API answers its own addresses, even a browser navigating there.
+    "run_worker_first": ["/v1/*"]
+  },
+  "routes": [
+    // The Widget calls the API on its script's own origin.
+    { "pattern": "embed.foxrenard.com", "custom_domain": true },
+    // The console calls the API on its own origin, where its session cookie goes.
+    { "pattern": "console.foxrenard.com", "custom_domain": true }
+  ],
   "workers_dev": false,
   "preview_urls": true,
-  // Erases expired fingerprints (ADR-0006) and magic links every hour.
+  // Erases expired fingerprints (ADR-0006), magic links and sign-ins every hour.
   "triggers": { "crons": ["0 * * * *"] },
-  "vars": { "EMAIL_SENDER_ADDRESS": "noreply@mail.foxrenard.com" },
+  "vars": {
+    "EMAIL_SENDER_ADDRESS": "noreply@mail.foxrenard.com",
+    // For the links emailed to Members. Previews link to their own address.
+    "CONSOLE_ORIGIN": "https://console.foxrenard.com"
+  },
   // CI replaces each id with the Hyperdrive config of the deployment's database.
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "production-hyperdrive-id" }],
   // Workers Logs stay off: each request's log would keep its headers, the

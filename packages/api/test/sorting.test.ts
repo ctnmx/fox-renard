@@ -1,6 +1,6 @@
 import type { CommentSort } from "@fox-renard/core";
 import { beforeEach, describe, expect, test } from "vitest";
-import { startTestApi, type TestApi } from "./harness";
+import { shownComments, startTestApi, type TestApi } from "./harness";
 
 let api: TestApi;
 
@@ -9,10 +9,8 @@ beforeEach(async () => {
 });
 
 /** Each top-level Comment's display name, in the order the Widget data lists them. */
-function displayNamesIn(data: {
-  comments: { commenter: { displayName: string } }[];
-}) {
-  return data.comments.map(({ commenter }) => commenter.displayName);
+function displayNamesIn(data: Parameters<typeof shownComments>[0]) {
+  return shownComments(data).map(({ commenter }) => commenter.displayName);
 }
 
 /**

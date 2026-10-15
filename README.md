@@ -29,6 +29,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The proje
 | Brevo | `packages/brevo` | The email adapter Fox Renard sends through in production. |
 | ALTCHA | `packages/altcha` | The invisible bot check the Widget solves before posting. |
 | Widget | `packages/widget` | The `<fox-renard-widget>` custom element (Preact). |
+| Console | `apps/console` | Where Members sign in and moderate Comments (React, shadcn/ui). |
 | Demo | `apps/demo` | A local route sheet embedding the Widget. |
 | Cloudflare | `apps/cloudflare` | The Worker that runs Fox Renard in production. |
 
@@ -38,9 +39,12 @@ Requires Node 22 and pnpm.
 
 ```sh
 pnpm install
-pnpm --filter @fox-renard/widget build
+pnpm build
 pnpm --filter @fox-renard/demo start   # route sheet on http://localhost:4173
 ```
+
+The demo serves the console on http://localhost:8787. Sign in as
+`membre@example.com`: the sign-in link is in http://localhost:8787/outbox.
 
 `pnpm typecheck`, `pnpm lint`, `pnpm test` (HTTP API), `pnpm e2e` (Widget in
 Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
@@ -71,7 +75,8 @@ and changes nothing when run again.
 ## Deploy
 
 Merging to `main` deploys Fox Renard to Cloudflare at `embed.foxrenard.com`,
-and each pull request gets a preview. Nothing deploys until someone runs the
+with the console at `console.foxrenard.com`, and each pull request gets a
+preview. Nothing deploys until someone runs the
 setup wizard:
 
 ```sh

@@ -3,7 +3,9 @@ import type {
   Comment,
   Commenter,
   CommentStatus,
+  ListedStatus,
   MagicLink,
+  Member,
   Page,
   Reaction,
   Site,
@@ -110,6 +112,64 @@ export interface Store {
   }): Promise<boolean>;
   /** Forgets the solved challenges that expired at or before `cutoff`. */
   eraseSpentBotChallenges(cutoff: Date): Promise<void>;
+  /** The Member whose email this is, whatever its case. */
+  findMember(email: string): Promise<Member | null>;
+  createSignInLink(link: Credential): Promise<void>;
+  /** How many of a Member's sign-in links still work at `at`. */
+  countSignInLinks(memberId: string, at: Date): Promise<number>;
+  /** Deletes a sign-in link and returns it, so that it works once only. */
+  takeSignInLink(tokenHash: string): Promise<Credential | null>;
+  createConsoleSession(session: Credential): Promise<void>;
+  /** The Member a console session belongs to, with when it expires. */
+  findConsoleSession(
+    tokenHash: string,
+  ): Promise<{ member: Member; expiresAt: Date } | null>;
+  deleteConsoleSession(tokenHash: string): Promise<void>;
+  /** Erases the sign-in links and console sessions that expired at or before `cutoff`. */
+  eraseSignIns(cutoff: Date): Promise<void>;
+  /** The email of each Member of the Organization that owns a Site. */
+  findMemberEmails(siteId: string): Promise<string[]>;
+  /** An Organization's Sites, by name. */
+  listSites(organizationId: string): Promise<{ id: string; name: string }[]>;
+  /** A Site's Comments and Replies with one status, newest first, on one Page or all. */
+  listSiteComments(
+    siteId: string,
+    filter: { status: ListedStatus; pageKey: string | null },
+  ): Promise<(Comment & { page: Pick<Page, "key" | "title"> })[]>;
+  /**
+   * The Pages of a Site that hold Comments other than placeholders, by
+   * title, with how many Comments each status holds.
+   */
+  listCommentedPages(siteId: string): Promise<
+    (Pick<Page, "key" | "title"> & {
+      counts: Record<ListedStatus, number>;
+    })[]
+  >;
+  /** A Comment or a Reply on one of an Organization's Sites; another Organization's is never found. */
+  findOrganizationComment(
+    organizationId: string,
+    commentId: string,
+  ): Promise<Comment | null>;
+  setCommentStatus(commentId: string, status: CommentStatus): Promise<void>;
+  /** How many Replies a top-level Comment has, whatever their status. */
+  countReplies(commentId: string): Promise<number>;
+  /** Deletes a Comment with its Votes. */
+  deleteComment(commentId: string): Promise<void>;
+  /**
+   * Deletes what a top-level Comment said, its display name and its Votes,
+   * and leaves it as a placeholder for its Replies.
+   */
+  leavePlaceholder(commentId: string): Promise<void>;
+}
+
+/**
+ * A sign-in link or a console session: what a token proves about a Member,
+ * stored by the token's SHA-256 only.
+ */
+export interface Credential {
+  tokenHash: string;
+  memberId: string;
+  expiresAt: Date;
 }
 
 /** A browser to link to a Commenter, with the Guest whose Comments it brings. */

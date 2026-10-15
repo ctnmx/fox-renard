@@ -1,4 +1,10 @@
-import type { BrowserLink, Page, Store, Vote } from "@fox-renard/core";
+import type {
+  BrowserLink,
+  ListedStatus,
+  Page,
+  Store,
+  Vote,
+} from "@fox-renard/core";
 import {
   and,
   count,
@@ -8,6 +14,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   type SQL,
   sql,
@@ -16,10 +23,15 @@ import type { Database } from "./database";
 import {
   commenters,
   comments,
+  consoleSessions,
   magicLinks,
+  members,
+  organizations,
   pages,
   rateLimitHits,
   reactions,
+  signInLinks,
+  sites,
   spentBotChallenges,
   visitors,
   votes,
@@ -84,23 +96,39 @@ export function createStore(db: Database): Store {
     );
   }
 
+  const commentColumns = {
+    id: comments.id,
+    commenter: {
+      id: commenters.id,
+      verified: commenterColumns.verified,
+    },
+    displayName: comments.displayName,
+    topLevelCommentId: comments.topLevelCommentId,
+    text: comments.text,
+    status: comments.status,
+    createdAt: comments.createdAt,
+    voteCounts: { up: countOf("up"), down: countOf("down") },
+  };
+
   function selectComments() {
     return db
-      .select({
-        id: comments.id,
-        commenter: {
-          id: commenters.id,
-          verified: commenterColumns.verified,
-        },
-        displayName: comments.displayName,
-        topLevelCommentId: comments.topLevelCommentId,
-        text: comments.text,
-        status: comments.status,
-        createdAt: comments.createdAt,
-        voteCounts: { up: countOf("up"), down: countOf("down") },
-      })
+      .select(commentColumns)
       .from(comments)
       .innerJoin(commenters, eq(commenters.id, comments.commenterId))
+      .$dynamic();
+  }
+
+  const memberColumns = {
+    id: members.id,
+    email: members.email,
+    organization: { id: organizations.id, name: organizations.name },
+  };
+
+  function selectMembers() {
+    return db
+      .select(memberColumns)
+      .from(members)
+      .innerJoin(organizations, eq(organizations.id, members.organizationId))
       .$dynamic();
   }
 
@@ -444,6 +472,169 @@ export function createStore(db: Database): Store {
       await db
         .delete(spentBotChallenges)
         .where(lte(spentBotChallenges.expiresAt, cutoff));
+    },
+
+    async findMember(email) {
+      const [member] = await selectMembers().where(
+        sql`lower(${members.email}) = lower(${email})`,
+      );
+      return member ?? null;
+    },
+
+    async createSignInLink(link) {
+      await db.insert(signInLinks).values(link);
+    },
+
+    async countSignInLinks(memberId, at) {
+      const [working] = await db
+        .select({ count: count() })
+        .from(signInLinks)
+        .where(
+          and(
+            eq(signInLinks.memberId, memberId),
+            gt(signInLinks.expiresAt, at),
+          ),
+        );
+      return working?.count ?? 0;
+    },
+
+    async takeSignInLink(tokenHash) {
+      const [link] = await db
+        .delete(signInLinks)
+        .where(eq(signInLinks.tokenHash, tokenHash))
+        .returning();
+      return link ?? null;
+    },
+
+    async createConsoleSession(session) {
+      await db.insert(consoleSessions).values(session);
+    },
+
+    async findConsoleSession(tokenHash) {
+      const [session] = await db
+        .select({ ...memberColumns, expiresAt: consoleSessions.expiresAt })
+        .from(consoleSessions)
+        .innerJoin(members, eq(members.id, consoleSessions.memberId))
+        .innerJoin(organizations, eq(organizations.id, members.organizationId))
+        .where(eq(consoleSessions.tokenHash, tokenHash));
+      if (!session) return null;
+      const { expiresAt, ...member } = session;
+      return { member, expiresAt };
+    },
+
+    async deleteConsoleSession(tokenHash) {
+      await db
+        .delete(consoleSessions)
+        .where(eq(consoleSessions.tokenHash, tokenHash));
+    },
+
+    async findMemberEmails(siteId) {
+      const found = await db
+        .select({ email: members.email })
+        .from(members)
+        .innerJoin(sites, eq(sites.organizationId, members.organizationId))
+        .where(eq(sites.id, siteId))
+        .orderBy(members.email);
+      return found.map(({ email }) => email);
+    },
+
+    async eraseSignIns(cutoff) {
+      await db.delete(signInLinks).where(lte(signInLinks.expiresAt, cutoff));
+      await db
+        .delete(consoleSessions)
+        .where(lte(consoleSessions.expiresAt, cutoff));
+    },
+
+    async listSites(organizationId) {
+      return db
+        .select({ id: sites.id, name: sites.name })
+        .from(sites)
+        .where(eq(sites.organizationId, organizationId))
+        .orderBy(sites.name);
+    },
+
+    async listSiteComments(siteId, { status, pageKey }) {
+      const listed = await db
+        .select({
+          ...commentColumns,
+          page: { key: pages.key, title: pages.title },
+        })
+        .from(comments)
+        .innerJoin(commenters, eq(commenters.id, comments.commenterId))
+        .innerJoin(pages, eq(pages.id, comments.pageId))
+        .where(
+          and(
+            eq(pages.siteId, siteId),
+            eq(comments.status, status),
+            pageKey === null ? undefined : eq(pages.key, pageKey),
+          ),
+        )
+        .orderBy(desc(comments.createdAt), desc(comments.id));
+      return listed;
+    },
+
+    async listCommentedPages(siteId) {
+      const countOf = (status: ListedStatus) =>
+        sql<number>`count(*) filter (where ${comments.status} = ${status})`.mapWith(
+          Number,
+        );
+      return db
+        .select({
+          key: pages.key,
+          title: pages.title,
+          counts: {
+            published: countOf("published"),
+            pending: countOf("pending"),
+            spam: countOf("spam"),
+          },
+        })
+        .from(pages)
+        .innerJoin(comments, eq(comments.pageId, pages.id))
+        .where(and(eq(pages.siteId, siteId), ne(comments.status, "deleted")))
+        .groupBy(pages.id)
+        .orderBy(pages.title, pages.key);
+    },
+
+    async findOrganizationComment(organizationId, commentId) {
+      const [comment] = await selectComments()
+        .innerJoin(pages, eq(pages.id, comments.pageId))
+        .innerJoin(sites, eq(sites.id, pages.siteId))
+        .where(
+          and(
+            eq(comments.id, commentId),
+            eq(sites.organizationId, organizationId),
+          ),
+        );
+      return comment ?? null;
+    },
+
+    async setCommentStatus(commentId, status) {
+      await db
+        .update(comments)
+        .set({ status })
+        .where(eq(comments.id, commentId));
+    },
+
+    async countReplies(commentId) {
+      const [replies] = await db
+        .select({ count: count() })
+        .from(comments)
+        .where(eq(comments.topLevelCommentId, commentId));
+      return replies?.count ?? 0;
+    },
+
+    async deleteComment(commentId) {
+      await db.delete(comments).where(eq(comments.id, commentId));
+    },
+
+    async leavePlaceholder(commentId) {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(comments)
+          .set({ status: "deleted", displayName: "", text: "" })
+          .where(eq(comments.id, commentId));
+        await tx.delete(votes).where(eq(votes.commentId, commentId));
+      });
     },
   };
 }

@@ -1,6 +1,7 @@
 import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
+import { createConsole } from "./console";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
-import { magicLinkEmail } from "./emails";
+import { magicLinkEmail, newCommentEmail } from "./emails";
 import type {
   CastVote,
   Comment,
@@ -111,10 +112,22 @@ export interface CommentView {
   pending: boolean;
 }
 
-/** A top-level Comment as Visitors read it, with its Replies oldest first. */
-export interface TopLevelCommentView extends CommentView {
+/**
+ * What stays of a top-level Comment with Replies once deleted, or marked as
+ * spam: its place, and its Replies oldest first. It shows nothing its
+ * Commenter said, nor their name.
+ */
+export interface DeletedCommentView {
+  id: string;
+  deleted: true;
+  createdAt: Date;
   replies: CommentView[];
 }
+
+/** A top-level Comment as Visitors read it, with its Replies oldest first. */
+export type TopLevelCommentView =
+  | (CommentView & { replies: CommentView[] })
+  | DeletedCommentView;
 
 /** The Commenter a browser posts as, as that browser sees them. */
 type CommenterView = Pick<Commenter, "displayName" | "verified">;
@@ -276,16 +289,24 @@ function topLevelCommentViews(
       viewOf(comment),
     ]);
   }
-  return comments
-    .filter((comment) => comment.topLevelCommentId === null)
-    .map((comment) => ({
-      ...viewOf(comment),
-      replies: replies.get(comment.id) ?? [],
-    }));
+  return (
+    comments
+      .filter((comment) => comment.topLevelCommentId === null)
+      .map((comment): TopLevelCommentView => {
+        const { id, createdAt } = comment;
+        const repliesTo = replies.get(id) ?? [];
+        return comment.status === "deleted" || comment.status === "spam"
+          ? { id, deleted: true, createdAt, replies: repliesTo }
+          : { ...viewOf(comment), replies: repliesTo };
+      })
+      // A placeholder shows only to hold Replies a Visitor sees.
+      .filter((view) => !("deleted" in view) || view.replies.length > 0)
+  );
 }
 
-function scoreOf({ voteCounts }: CommentView): number {
-  return voteCounts.up - voteCounts.down;
+function scoreOf(view: TopLevelCommentView): number {
+  if ("deleted" in view) return 0;
+  return view.voteCounts.up - view.voteCounts.down;
 }
 
 /** Top-level Comments listed newest first, in the order a Visitor chose. */
@@ -320,6 +341,32 @@ function placeReply(
     topLevelCommentId: answered.topLevelCommentId,
     text: `@${answered.displayName} ${text}`,
   };
+}
+
+/**
+ * Whether a browser posting as `commenter` sees a Comment. A Pending Comment
+ * shows to its Commenter's browsers only, and a Reply marked as spam to
+ * nobody. A top-level Comment deleted or marked as spam shows as a
+ * placeholder, which holds its Replies.
+ */
+function shownTo(comment: Comment, commenter: Commenter | null): boolean {
+  switch (comment.status) {
+    case "published":
+    case "deleted":
+      return true;
+    case "pending":
+      return comment.commenter.id === commenter?.id;
+    case "spam":
+      return comment.topLevelCommentId === null;
+  }
+}
+
+/**
+ * Whether a Comment takes Replies and Votes: neither a deleted Comment's
+ * placeholder nor spam does.
+ */
+function answerable({ status }: Comment): boolean {
+  return status === "published" || status === "pending";
 }
 
 function commentView(comment: Comment, vote: Vote | null): CommentView {
@@ -358,13 +405,24 @@ function magicLinkOf(site: Site, page: Page, token: string): string | null {
   return url.href;
 }
 
+/** Core's adapters, and where the console answers. */
+export interface CoreConfig extends Ports {
+  /**
+   * The console's origin, such as `https://console.foxrenard.com`, for the
+   * links Core emails Members. Never a request's `Origin`, which its client
+   * can forge.
+   */
+  consoleOrigin: string;
+}
+
 export function createCore({
   store,
   clock,
   email: emailSender,
   botCheck,
   fingerprintSecret,
-}: Ports) {
+  consoleOrigin,
+}: CoreConfig) {
   async function allowedSite(
     request: SiteRequest,
   ): Promise<SiteRefusal | { outcome: "allowed"; site: Site }> {
@@ -491,11 +549,8 @@ export function createCore({
     sort: CommentSort,
   ): Promise<CommentsView> {
     const commenter = visitor && (await store.findCommenter(visitor.id));
-    // A Pending Comment shows to its Commenter's browsers only.
-    const listed = (await store.listComments(page.id)).filter(
-      (comment) =>
-        comment.status === "published" ||
-        comment.commenter.id === commenter?.id,
+    const listed = (await store.listComments(page.id)).filter((comment) =>
+      shownTo(comment, commenter),
     );
     const newestFirst = topLevelCommentViews(
       listed,
@@ -573,7 +628,55 @@ export function createCore({
     }
   }
 
+  /**
+   * Emails each Member of the Site a new Comment, with a link to its Page's
+   * Comments of its status, on its Site, on the console. The Comment stays posted when an
+   * email cannot be sent.
+   */
+  async function notifyMembers({
+    site,
+    page,
+    displayName,
+    text,
+    topLevelCommentId,
+    status,
+  }: {
+    site: Site;
+    page: Page;
+    displayName: string;
+    text: string;
+    topLevelCommentId: string | null;
+    status: CommentStatus;
+  }): Promise<void> {
+    const link = new URL("/", consoleOrigin);
+    link.search = new URLSearchParams({
+      site: site.id,
+      status,
+      page: page.key,
+    }).toString();
+    for (const to of await store.findMemberEmails(site.id)) {
+      try {
+        await emailSender.send(
+          newCommentEmail({
+            site,
+            to,
+            page,
+            displayName,
+            text,
+            reply: topLevelCommentId !== null,
+            pending: status === "pending",
+            link: link.href,
+          }),
+        );
+      } catch (error) {
+        console.error("Fox Renard: a Member could not be emailed.", error);
+      }
+    }
+  }
+
   return {
+    ...createConsole({ store, clock, email: emailSender, consoleOrigin }),
+
     /** What a Widget shows on a Page; an unknown Page Key creates the Page. */
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
       const allowed = await allowedSite(request);
@@ -634,7 +737,9 @@ export function createCore({
       let answered: Comment | null = null;
       if (request.replyTo !== null) {
         answered = await store.findComment(page.id, request.replyTo);
-        if (!answered) return { outcome: "comment-not-found" };
+        if (!answered || !answerable(answered)) {
+          return { outcome: "comment-not-found" };
+        }
       }
       const placed = answered
         ? placeReply(answered, text)
@@ -684,6 +789,8 @@ export function createCore({
           displayName,
           email: request.email,
         }));
+
+      await notifyMembers({ site, page, displayName, ...placed, status });
 
       return {
         outcome: "posted",
@@ -771,7 +878,9 @@ export function createCore({
       const page = await store.findPage(site.id, request.pageKey);
       if (!page) return { outcome: "page-not-found" };
       const comment = await store.findComment(page.id, request.commentId);
-      if (!comment) return { outcome: "comment-not-found" };
+      if (!comment || !answerable(comment)) {
+        return { outcome: "comment-not-found" };
+      }
 
       const admitted = await admit(site, "vote", request);
       if (!admitted) return { outcome: "rate-limited" };
@@ -849,15 +958,17 @@ export function createCore({
     },
 
     /**
-     * Erases what abuse limits no longer remember, fingerprints included,
-     * and expired magic links, with the emails nobody verified. The platform
-     * runs it every hour, since reacting and voting erase only when someone
-     * reacts or votes (ADR-0006).
+     * Erases what abuse limits no longer remember, fingerprints included;
+     * expired magic links, with the emails nobody verified; and the sign-in
+     * links and console sessions that expired. The platform runs it every
+     * hour, since reacting and voting erase only when someone reacts or votes
+     * (ADR-0006).
      */
     async eraseExpired(): Promise<void> {
       await eraseExpiredFingerprints();
       await store.eraseMagicLinks(clock.now());
       await store.eraseSpentBotChallenges(clock.now());
+      await store.eraseSignIns(clock.now());
     },
   };
 }

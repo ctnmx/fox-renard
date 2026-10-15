@@ -16,6 +16,7 @@
   "dependencies": {
     "@fox-renard/altcha": "workspace:*",
     "@fox-renard/api": "workspace:*",
+    "@fox-renard/console": "workspace:*",
     "@fox-renard/core": "workspace:*",
     "@fox-renard/db": "workspace:*",
     "@fox-renard/widget": "workspace:*",

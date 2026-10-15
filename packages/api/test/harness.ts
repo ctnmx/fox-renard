@@ -1,6 +1,7 @@
 import {
   type CommentSort,
   createCore,
+  type ListedStatus,
   magicLinkParameter,
   type Vote,
 } from "@fox-renard/core";
@@ -11,6 +12,7 @@ import {
   InMemoryPhotoStore,
   magicLinkIn,
   StubBotCheck,
+  signInLinkIn,
 } from "@fox-renard/core/fakes";
 import {
   createStore,
@@ -27,6 +29,7 @@ import {
 } from "@fox-renard/db/pglite";
 import { testClient } from "hono/testing";
 import { createApp } from "../src";
+import type { WidgetData } from "../src/client";
 
 export { rectoVerso };
 
@@ -54,6 +57,26 @@ export const anotherSite = {
   },
 } as const satisfies SiteSeed;
 
+/** A top-level Comment as the Widget shows it, never a deleted Comment's placeholder. */
+type ShownComment = Exclude<WidgetData["comments"][number], { deleted: true }>;
+
+/**
+ * A Page's top-level Comments as the Widget lists them, for tests that delete
+ * nothing: a deleted Comment's placeholder among them fails the test.
+ */
+export function shownComments({
+  comments,
+}: Pick<WidgetData, "comments">): ShownComment[] {
+  return comments.map((comment) => {
+    if ("deleted" in comment) {
+      throw new Error(
+        `Comment ${comment.id} is a deleted Comment's placeholder`,
+      );
+    }
+    return comment;
+  });
+}
+
 /** A Page as the Widget embedded on it reports it. */
 export interface WidgetPage {
   siteId: string;
@@ -61,6 +84,22 @@ export interface WidgetPage {
   pageKey: string;
   url: string;
   title: string;
+}
+
+/** Which of a Site's Comments the console lists. */
+interface CommentFilter {
+  /** Recto Verso's, unless told otherwise. */
+  siteId?: string;
+  status: ListedStatus;
+  /** The Page whose Comments to list, or all Pages when left out. */
+  pageKey?: string;
+}
+
+/** Fails unless the console's request did what it asked. */
+function expectDone(response: Response, what: string) {
+  if (response.status !== 204) {
+    throw new Error(`Expected to ${what}, got ${response.status}`);
+  }
 }
 
 /** Where a browser posts a Comment, and what it asks for. */
@@ -102,6 +141,9 @@ export function optionId(label: OptionLabel): string {
 
 const anyClientIp = "198.51.100.20";
 
+/** Where the console answers, for the links Fox Renard emails Members. */
+export const consoleOrigin = "https://console.foxrenard.test";
+
 /** The header a browser sends once the API has issued it a token. */
 export function authorization(browserToken: string | undefined) {
   return browserToken ? { authorization: `Bearer ${browserToken}` } : {};
@@ -136,6 +178,7 @@ export async function startTestApi() {
     photos,
     botCheck,
     fingerprintSecret,
+    consoleOrigin,
   });
   const app = createApp(core, {
     getConnInfo: (c) => ({
@@ -260,6 +303,11 @@ export async function startTestApi() {
     );
   }
 
+  /** The emails sent to `address`, oldest first. */
+  function emailsTo(address: string) {
+    return outbox.sent.filter(({ to }) => to === address);
+  }
+
   /** The magic link in the latest email sent to `address`. */
   function magicLinkTo(address: string): string {
     const email = outbox.sent.findLast(({ to }) => to === address);
@@ -291,6 +339,178 @@ export async function startTestApi() {
       },
       { headers: { Origin: origin } },
     );
+  }
+
+  /** The sign-in link in the latest email sent to a Member at `address`. */
+  function signInLinkTo(address: string): string {
+    const email = outbox.sent.findLast(({ to }) => to === address);
+    const link = email && signInLinkIn(email.text);
+    if (!link) throw new Error(`No sign-in link was sent to ${address}`);
+    return link;
+  }
+
+  /**
+   * A Member's browser on the console. Like a browser, it keeps the session
+   * cookie the API sets, and sends it back with each request.
+   */
+  function newConsole() {
+    let cookie: string | undefined;
+
+    /** Keeps the cookie a response sets, or forgets it when the response expires it. */
+    function keepCookie(response: Response) {
+      const setCookie = response.headers.get("Set-Cookie");
+      if (!setCookie) return;
+      const [pair = ""] = setCookie.split(";");
+      cookie = /max-age=0/i.test(setCookie) ? undefined : pair;
+    }
+
+    const withCookie = (): { headers: Record<string, string> } => ({
+      headers: cookie ? { Cookie: cookie } : {},
+    });
+
+    async function trySignIn(link: string) {
+      const token = new URLSearchParams(new URL(link).hash.slice(1)).get(
+        "token",
+      );
+      const response = await client.v1.console.sessions.$post(
+        { json: { token: token ?? "" } },
+        withCookie(),
+      );
+      keepCookie(response);
+      return response;
+    }
+
+    async function tryHome() {
+      return client.v1.console.home.$get({}, withCookie());
+    }
+
+    return {
+      /** The session cookie the browser holds, as it sends it. */
+      get cookie() {
+        return cookie;
+      },
+
+      requestSignInLink(email: string) {
+        return client.v1.console["sign-in-links"].$post({ json: { email } });
+      },
+
+      trySignIn,
+
+      /** Follows a sign-in link, as the console page it opens does. */
+      async signIn(link: string) {
+        const response = await trySignIn(link);
+        if (!response.ok) {
+          throw new Error(`Expected to sign in, got ${response.status}`);
+        }
+      },
+
+      async signOut() {
+        const response = await client.v1.console.sessions.current.$delete(
+          {},
+          withCookie(),
+        );
+        keepCookie(response);
+        return response;
+      },
+
+      tryHome,
+
+      /** What the console shows a signed-in Member first: their Organization and its Sites. */
+      async home() {
+        const response = await tryHome();
+        if (response.status !== 200) {
+          throw new Error(
+            `Expected the console's home, got ${response.status}`,
+          );
+        }
+        return response.json();
+      },
+
+      tryComments,
+
+      /** A Site's Comments with one status, newest first, on one Page or all. */
+      async comments(filter: CommentFilter) {
+        const response = await tryComments(filter);
+        if (response.status !== 200) {
+          throw new Error(`Expected the Comments, got ${response.status}`);
+        }
+        return (await response.json()).comments;
+      },
+
+      tryPages,
+
+      /** The Pages of a Site that hold Comments, by title, with how many each status holds. */
+      async pages(siteId?: string) {
+        const response = await tryPages(siteId);
+        if (response.status !== 200) {
+          throw new Error(`Expected the Pages, got ${response.status}`);
+        }
+        return (await response.json()).pages;
+      },
+
+      tryApprove,
+      tryMarkAsSpam,
+      tryDelete,
+
+      async approve(commentId: string) {
+        expectDone(await tryApprove(commentId), "approve the Comment");
+      },
+
+      async markAsSpam(commentId: string) {
+        expectDone(await tryMarkAsSpam(commentId), "mark the Comment as spam");
+      },
+
+      async delete(commentId: string) {
+        expectDone(await tryDelete(commentId), "delete the Comment");
+      },
+    };
+
+    function tryComments({
+      siteId = rectoVerso.siteId,
+      status,
+      pageKey,
+    }: CommentFilter) {
+      return client.v1.console.sites[":siteId"].comments.$get(
+        { param: { siteId }, query: { status, page: pageKey } },
+        withCookie(),
+      );
+    }
+
+    function tryPages(siteId: string = rectoVerso.siteId) {
+      return client.v1.console.sites[":siteId"].pages.$get(
+        { param: { siteId } },
+        withCookie(),
+      );
+    }
+
+    function tryApprove(commentId: string) {
+      return client.v1.console.comments[":commentId"].approve.$post(
+        { param: { commentId } },
+        withCookie(),
+      );
+    }
+
+    function tryMarkAsSpam(commentId: string) {
+      return client.v1.console.comments[":commentId"].spam.$post(
+        { param: { commentId } },
+        withCookie(),
+      );
+    }
+
+    function tryDelete(commentId: string) {
+      return client.v1.console.comments[":commentId"].$delete(
+        { param: { commentId } },
+        withCookie(),
+      );
+    }
+  }
+
+  /** A console a Member signed in to, by default Recto Verso's Member. */
+  async function signedInMember(email = "membre@example.com") {
+    const member = newConsole();
+    await member.requestSignInLink(email);
+    await member.signIn(signInLinkTo(email));
+    return member;
   }
 
   function putVote({
@@ -474,9 +694,13 @@ export async function startTestApi() {
     solvedBotCheck,
     postComment,
     putVote,
+    emailsTo,
     magicLinkTo,
     followMagicLink,
     newBrowser,
+    signInLinkTo,
+    newConsole,
+    signedInMember,
     clock,
     outbox,
     photos,

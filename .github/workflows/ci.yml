@@ -102,8 +102,8 @@ jobs:
         run: pnpm --filter @fox-renard/db seed
         env:
           SEED_MEMBER_EMAIL: ${{ secrets.SEED_MEMBER_EMAIL }}
-      - name: Build the Widget
-        run: pnpm --filter @fox-renard/widget build
+      - name: Build the Widget and the console
+        run: pnpm --filter "@fox-renard/cloudflare..." build
       - name: Point Hyperdrive at the database
         working-directory: apps/cloudflare
         run: node scripts/hyperdrive.mjs bind fox-renard-production production
@@ -119,15 +119,19 @@ jobs:
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
           ALTCHA_HMAC_KEY: ${{ secrets.ALTCHA_HMAC_KEY }}
 
-      - name: Wait for embed.foxrenard.com
-        # The first deployment waits for its certificate.
-        run: curl --fail --silent --show-error --retry 30 --retry-delay 10 --retry-all-errors --output /dev/null https://embed.foxrenard.com/widget.js
+      - name: Wait for embed.foxrenard.com and console.foxrenard.com
+        # The first deployment waits for their certificates.
+        run: |
+          for url in https://embed.foxrenard.com/widget.js https://console.foxrenard.com/; do
+            curl --fail --silent --show-error --retry 30 --retry-delay 10 --retry-all-errors --output /dev/null "$url"
+          done
       - name: Install Chromium
         run: pnpm --filter @fox-renard/cloudflare exec playwright install --with-deps chromium
       - name: Smoke check
         run: pnpm --filter @fox-renard/cloudflare smoke
         env:
           FOX_RENARD_API_ORIGIN: https://embed.foxrenard.com
+          FOX_RENARD_CONSOLE_ORIGIN: https://console.foxrenard.com
 
   preview:
     needs: check
@@ -171,8 +175,8 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url }}
           SEED_MEMBER_EMAIL: membre@example.com
-      - name: Build the Widget
-        run: pnpm --filter @fox-renard/widget build
+      - name: Build the Widget and the console
+        run: pnpm --filter "@fox-renard/cloudflare..." build
       - name: Point Hyperdrive at the preview's database
         working-directory: apps/cloudflare
         run: node scripts/hyperdrive.mjs bind "fox-renard-$PREVIEW" preview
@@ -201,6 +205,7 @@ jobs:
       - name: Smoke check
         run: pnpm --filter @fox-renard/cloudflare smoke
         env:
+          # A preview serves the Widget, the console and the API on one address.
           FOX_RENARD_API_ORIGIN: ${{ steps.deploy.outputs.url }}
 
       # The pull request may have closed while this job waited or ran, after
