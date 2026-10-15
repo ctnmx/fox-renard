@@ -8,9 +8,8 @@ Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`
 | --- | --- |
 | `embed.foxrenard.com` | The Widget script and the HTTP API. The Widget calls the API on its script's own origin, so they share it. |
 | `console.foxrenard.com` | The Member console, and the HTTP API it calls on its own origin, where its session cookie goes. Sign-in links point here. |
-| `mail.foxrenard.com` | The sender domain Brevo authenticates. Every email comes from `noreply@mail.foxrenard.com`. |
 | `pr-<number>-fox-renard.<subdomain>.workers.dev` | The preview of a pull request: the Widget script, the console and the HTTP API on one address. |
-| `foxrenard.com` | Free for a landing page. |
+| `foxrenard.com` | Free for a landing page. Brevo authenticates it, and every email comes from `noreply@foxrenard.com`. |
 
 A Site embeds the Widget with `<script async src="https://embed.foxrenard.com/widget.js"></script>`.
 

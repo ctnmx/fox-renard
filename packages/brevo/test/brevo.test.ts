@@ -34,7 +34,7 @@ describe("the Brevo adapter", () => {
     const brevo = standInBrevo(accepted);
     const sender = createBrevoEmailSender({
       apiKey: "xkeysib-test",
-      senderAddress: "ne-pas-repondre@mail.foxrenard.com",
+      senderAddress: "ne-pas-repondre@foxrenard.com",
       fetch: brevo.fetch,
     });
 
@@ -49,7 +49,7 @@ describe("the Brevo adapter", () => {
     expect(await request?.json()).toEqual({
       sender: {
         name: "Recto Verso via Fox Renard",
-        email: "ne-pas-repondre@mail.foxrenard.com",
+        email: "ne-pas-repondre@foxrenard.com",
       },
       to: [{ email: "marie@example.com" }],
       subject: "Confirme ton adresse email sur Recto Verso",
@@ -67,7 +67,7 @@ describe("the Brevo adapter", () => {
     );
     const sender = createBrevoEmailSender({
       apiKey: "xkeysib-revoked",
-      senderAddress: "ne-pas-repondre@mail.foxrenard.com",
+      senderAddress: "ne-pas-repondre@foxrenard.com",
       fetch: brevo.fetch,
     });
 

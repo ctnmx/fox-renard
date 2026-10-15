@@ -13,7 +13,7 @@ interface Env {
   /** The secret Core derives each day's fingerprint secret from (ADR-0006). */
   FINGERPRINT_SECRET: string;
   BREVO_API_KEY: string;
-  /** The address on Fox Renard's sender subdomain that every email comes from. */
+  /** The address on foxrenard.com, which Brevo authenticates, that every email comes from. */
   EMAIL_SENDER_ADDRESS: string;
   /** The secret that signs the bot check's challenges. */
   ALTCHA_HMAC_KEY: string;
