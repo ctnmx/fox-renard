@@ -10,9 +10,15 @@ export {
   type Vote,
 } from "@fox-renard/core";
 
-/** The typed client the Widget and the console use to call the HTTP API. */
-export function createClient(baseUrl: string) {
-  return hc<App>(baseUrl);
+/**
+ * The typed client the Widget, the console and the Hyvor import tool use to
+ * call the HTTP API, with `fetch` by default.
+ */
+export function createClient(
+  baseUrl: string,
+  options: { fetch?: typeof fetch } = {},
+) {
+  return hc<App>(baseUrl, options);
 }
 
 export type Client = ReturnType<typeof createClient>;

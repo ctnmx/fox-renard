@@ -1,6 +1,7 @@
 import {
   type Core,
   commentSorts,
+  hyvorStatuses,
   listedStatuses,
   voteDirections,
 } from "@fox-renard/core";
@@ -54,6 +55,40 @@ const sessionCookie = "fox-renard-session";
 function sessionTokenOf(c: Context): string | null {
   return getCookie(c, sessionCookie, "host") ?? null;
 }
+
+/** A Hyvor Talk Comment as the import tool sends it (ADR-0007). */
+const hyvorComment = z.object({
+  id: z.number().int().positive(),
+  createdAt: z.number().int().nonnegative(),
+  status: z.enum(hyvorStatuses),
+  bodyHtml: z.string().max(100_000),
+  parentId: z.number().int().positive().nullable(),
+  author: z.object({
+    type: z.enum(["hyvor", "sso"]).nullable(),
+    id: z.number().int().nullable(),
+    name: z.string().max(1000),
+    email: z.string().max(254).nullable(),
+  }),
+});
+
+/**
+ * The Hyvor threads of one import request. The import tool sends a few at a
+ * time, so that each request stays within the Worker's CPU limit.
+ */
+const hyvorImport = z.object({
+  threads: z
+    .array(
+      z.object({
+        page: z.object({
+          key: z.string().min(1).max(500),
+          url: z.url({ protocol: /^https?$/ }).max(2048),
+          title: z.string().max(10_000),
+        }),
+        comments: z.array(hyvorComment).min(1).max(200),
+      }),
+    )
+    .max(100),
+});
 
 /** The status each of Core's refusals answers with. */
 const refusals = {
@@ -353,6 +388,21 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           });
           if (result.outcome !== "listed") return refuse(c, result.outcome);
           return c.json({ comments: result.comments }, 200);
+        },
+      )
+      .post(
+        "/v1/console/sites/:siteId/hyvor-import",
+        validate("param", z.object({ siteId: z.uuid() })),
+        validate("json", hyvorImport),
+        async (c) => {
+          const result = await core.importHyvor({
+            sessionToken: sessionTokenOf(c),
+            siteId: c.req.valid("param").siteId,
+            threads: c.req.valid("json").threads,
+          });
+          if (result.outcome !== "imported") return refuse(c, result.outcome);
+          const { imported, skipped, alreadyPresent } = result;
+          return c.json({ imported, skipped, alreadyPresent }, 200);
         },
       )
       .post(

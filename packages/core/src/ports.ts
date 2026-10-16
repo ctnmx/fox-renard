@@ -78,6 +78,24 @@ export interface Store {
     text: string;
     status: CommentStatus;
     createdAt: Date;
+    /** The Hyvor Talk Comment an imported Comment comes from. */
+    hyvorCommentId?: number;
+  }): Promise<{ id: string }>;
+  /** The Comments of a Page imported from these Hyvor Comments, by Hyvor comment id. */
+  findHyvorComments(
+    pageId: string,
+    hyvorCommentIds: number[],
+  ): Promise<Map<number, string>>;
+  /**
+   * The Guest an imported Hyvor author stands for on a Site, created on first
+   * sight of their key, with their email unverified. A `null` key creates a
+   * Guest of their own.
+   */
+  findOrCreateHyvorCommenter(commenter: {
+    siteId: string;
+    hyvorAuthorKey: string | null;
+    displayName: string;
+    email: string | null;
   }): Promise<{ id: string }>;
   /** One of a Page's Comments, top-level or Reply. */
   findComment(pageId: string, commentId: string): Promise<Comment | null>;

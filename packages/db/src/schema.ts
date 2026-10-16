@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   index,
   integer,
@@ -167,13 +168,21 @@ export const commenters = pgTable(
     email: text("email"),
     /** When a magic link verified `email`; null for a Guest. */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /**
+     * The Hyvor Talk author an imported Guest stands for, so that each of
+     * their imported Comments is theirs; null for a Commenter who posted here.
+     */
+    hyvorAuthorKey: text("hyvor_author_key"),
     createdAt: createdAt(),
   },
-  // One Verified Commenter per email and Site.
   (table) => [
+    // One Verified Commenter per email and Site.
     uniqueIndex()
       .on(table.siteId, table.email)
       .where(sql`${table.verifiedAt} is not null`),
+    uniqueIndex()
+      .on(table.siteId, table.hyvorAuthorKey)
+      .where(sql`${table.hyvorAuthorKey} is not null`),
   ],
 );
 
@@ -209,8 +218,18 @@ export const comments = pgTable(
       .notNull()
       .default("published"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /**
+     * The Hyvor Talk Comment an imported Comment comes from, so that running
+     * the import again creates it no more; null for a Comment posted here.
+     */
+    hyvorCommentId: bigint("hyvor_comment_id", { mode: "number" }),
   },
-  (table) => [index().on(table.pageId, table.createdAt)],
+  (table) => [
+    index().on(table.pageId, table.createdAt),
+    uniqueIndex()
+      .on(table.pageId, table.hyvorCommentId)
+      .where(sql`${table.hyvorCommentId} is not null`),
+  ],
 );
 
 /**
