@@ -68,7 +68,9 @@ export interface Store {
   ): Promise<boolean>;
   /**
    * Links a browser to a Verified Commenter. The Comments of the Guest it
-   * absorbs, if still a Guest, become theirs, and that Guest is no more.
+   * absorbs, if still a Guest, become theirs, and that Guest is no more; so do
+   * those of the Guests imported from Hyvor under their email, in any case,
+   * that no browser posts as.
    */
   linkBrowser(link: BrowserLink): Promise<void>;
   createComment(comment: {

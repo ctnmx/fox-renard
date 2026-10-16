@@ -354,3 +354,84 @@ describe("imported authors are Guests", () => {
     expect(await api.databaseHolds("203.0.113.7")).toBe(false);
   });
 });
+
+/** Who wrote each Comment and Reply a Widget shows, with their badge. */
+function badges(widget: Parameters<typeof shownComments>[0]) {
+  return shownComments(widget).flatMap((comment) =>
+    [comment, ...comment.replies].map(({ commenter }) => [
+      commenter.displayName,
+      commenter.verified,
+    ]),
+  );
+}
+
+describe("an imported author who verifies their email gets their imported Comments back", () => {
+  test("following a magic link to the email Hyvor gave, in any case, puts the badge on their imported Comments", async () => {
+    await api.loadWidget();
+    await (await api.signedInMember()).importHyvor(hyvorExport);
+    const marie = api.newBrowser();
+    await marie.post("Marie Dupont", "De retour sur Fox Renard.", {
+      email: "marie.dupont@example.org",
+    });
+
+    await marie.followMagicLink(api.magicLinkTo("marie.dupont@example.org"));
+
+    expect(badges(await api.loadWidget())).toEqual([
+      ["Marie Dupont", true],
+      ["Marie Dupont", true],
+      ["Paul Martin", false],
+      ["Marie Dupont", true],
+      ["Paul Martin", false],
+    ]);
+  });
+
+  test("Comments imported after the email was verified get the badge on the next magic link followed", async () => {
+    await api.loadWidget();
+    const marie = api.newBrowser();
+    await marie.post("Marie Dupont", "De retour sur Fox Renard.", {
+      email: "marie.dupont@example.org",
+    });
+    await marie.followMagicLink(api.magicLinkTo("marie.dupont@example.org"));
+    await (await api.signedInMember()).importHyvor(hyvorExport);
+
+    const phone = api.newBrowser();
+    await phone.post("Marie Dupont", "Depuis mon téléphone.", {
+      email: "marie.dupont@example.org",
+    });
+    await phone.followMagicLink(api.magicLinkTo("marie.dupont@example.org"));
+
+    expect(
+      badges(await api.loadWidget()).filter(
+        ([name]) => name === "Marie Dupont",
+      ),
+    ).toEqual([
+      ["Marie Dupont", true],
+      ["Marie Dupont", true],
+      ["Marie Dupont", true],
+      ["Marie Dupont", true],
+    ]);
+  });
+
+  test("a Guest some browser posts as is not absorbed by giving their email, which anyone can type", async () => {
+    await api.loadWidget();
+    const impostor = api.newBrowser();
+    await impostor.post("Marie Dupont", "Ce n'est pas moi.", {
+      email: "marie.dupont@example.org",
+    });
+    const marie = api.newBrowser();
+    await marie.post("Marie Dupont", "C'est moi.", {
+      email: "marie.dupont@example.org",
+    });
+
+    await marie.followMagicLink(api.magicLinkTo("marie.dupont@example.org"));
+
+    expect(
+      shownComments(await api.loadWidget())
+        .map(asRead)
+        .map(({ text, commenter }) => [text, commenter.verified]),
+    ).toEqual([
+      ["C'est moi.", true],
+      ["Ce n'est pas moi.", false],
+    ]);
+  });
+});

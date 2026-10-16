@@ -39,30 +39,60 @@ import {
   votes,
 } from "./schema";
 
-/** Links a browser to a Commenter, bringing the Comments of a Guest that is still one. */
+/** Moves the Guests' Comments to a Commenter, and the Guests are no more. */
+async function absorbGuests(
+  db: Database,
+  commenterId: string,
+  guestIds: string[],
+): Promise<void> {
+  if (guestIds.length === 0) return;
+  await db
+    .update(comments)
+    .set({ commenterId })
+    .where(inArray(comments.commenterId, guestIds));
+  await db.delete(commenters).where(inArray(commenters.id, guestIds));
+}
+
+/**
+ * Links a browser to a Verified Commenter, bringing the Comments of a Guest
+ * that is still one, and those of the Guests imported from Hyvor under their
+ * email. A Guest some browser posts as never comes by email alone: anyone can
+ * type an email.
+ */
 async function linkBrowser(
   db: Database,
   { visitorId, commenterId, absorbedCommenterId }: BrowserLink,
 ): Promise<void> {
-  if (absorbedCommenterId) {
-    const [guest] = await db
-      .select({ id: commenters.id })
-      .from(commenters)
-      .where(
-        and(
-          eq(commenters.id, absorbedCommenterId),
-          isNull(commenters.verifiedAt),
+  const verified = db
+    .select({ siteId: commenters.siteId, email: commenters.email })
+    .from(commenters)
+    .where(eq(commenters.id, commenterId))
+    .as("verified");
+  const guests = await db
+    .select({ id: commenters.id })
+    .from(commenters)
+    .innerJoin(verified, eq(verified.siteId, commenters.siteId))
+    .where(
+      and(
+        isNull(commenters.verifiedAt),
+        or(
+          absorbedCommenterId
+            ? eq(commenters.id, absorbedCommenterId)
+            : undefined,
+          and(
+            isNotNull(commenters.hyvorAuthorKey),
+            sql`lower(${commenters.email}) = lower(${verified.email})`,
+            sql`not exists (select 1 from ${visitors} where ${visitors.commenterId} = ${commenters.id})`,
+          ),
         ),
-      )
-      .for("update");
-    if (guest) {
-      await db
-        .update(comments)
-        .set({ commenterId })
-        .where(eq(comments.commenterId, guest.id));
-      await db.delete(commenters).where(eq(commenters.id, guest.id));
-    }
-  }
+      ),
+    )
+    .for("update", { of: commenters });
+  await absorbGuests(
+    db,
+    commenterId,
+    guests.map(({ id }) => id),
+  );
   await db
     .update(visitors)
     .set({ commenterId })
