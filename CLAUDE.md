@@ -21,6 +21,14 @@ When an acceptance criterion needs a platform adapter (a schedule, a secret, a b
 
 When `/implement` finishes, open a pull request with the `pr` skill. A ticket's human-only steps go in its body.
 
+Merge your own pull request yourself, with a merge commit, once it is **done**:
+
+- `check` and `preview` are green on the head you validated, which you pass as `expectedHeadSha`, and it merges cleanly with `main` (see Parallel sessions);
+- every `code-review` finding is fixed or answered, and no review thread waits on you;
+- its body holds no human-only step that must come before the merge, such as a bucket, secret, binding or DNS record. Such a pull request waits for the user, with that step at the top of its body.
+
+After the merge, check the production deploy on `main` with a `send_later` check-in, since push runs wake no session, and report its migration, deploy and smoke check. When production fails, diagnose it and ask the user before pushing a fix.
+
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
