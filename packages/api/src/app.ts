@@ -11,6 +11,7 @@ import type { GetConnInfo } from "hono/conninfo";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { z } from "zod";
+import { sessionCookie } from "./session-cookie";
 
 function validate<
   Target extends keyof ValidationTargets,
@@ -45,12 +46,6 @@ const browserTokenHeader = z.object({
 // so any page may read what they answer.
 const publicCors = cors();
 
-/**
- * The cookie that holds a Member's console session. Its `__Host-` prefix
- * keeps it on the console's own host, and over HTTPS only.
- */
-const sessionCookie = "fox-renard-session";
-
 /** The token of the request's console session, if it has one. */
 function sessionTokenOf(c: Context): string | null {
   return getCookie(c, sessionCookie, "host") ?? null;
@@ -72,11 +67,11 @@ const hyvorComment = z.object({
 });
 
 /**
- * The Hyvor threads of one import request. The import tool sends a few at a
+ * The Hyvor conversations of one import request. The import tool sends a few at a
  * time, so that each request stays within the Worker's CPU limit.
  */
 const hyvorImport = z.object({
-  threads: z
+  conversations: z
     .array(
       z.object({
         page: z.object({
@@ -398,7 +393,7 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
           const result = await core.importHyvor({
             sessionToken: sessionTokenOf(c),
             siteId: c.req.valid("param").siteId,
-            threads: c.req.valid("json").threads,
+            conversations: c.req.valid("json").conversations,
           });
           if (result.outcome !== "imported") return refuse(c, result.outcome);
           const { imported, skipped, alreadyPresent } = result;

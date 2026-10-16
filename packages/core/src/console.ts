@@ -3,12 +3,20 @@ import { randomHex, sha256Hex } from "./crypto";
 import { signInLinkEmail } from "./emails";
 import {
   type HyvorAuthor,
+  type HyvorConversation,
   type HyvorImportCounts,
-  type HyvorThread,
+  type HyvorImportStep,
   hyvorImportSteps,
   plainTextOf,
 } from "./hyvor-import";
-import { maxDisplayNameLength, maxPageTitleLength, shorten } from "./limits";
+import {
+  maxCommentLength,
+  maxDisplayNameLength,
+  maxPageTitleLength,
+  shorten,
+  tidyCommentText,
+  tidyDisplayName,
+} from "./limits";
 import type { Comment, ListedStatus, Member, Page } from "./model";
 import type { Clock, EmailSender, Store } from "./ports";
 
@@ -94,9 +102,9 @@ export type ConsoleCommentsResult =
   | { outcome: "listed"; comments: ConsoleCommentView[] }
   | SiteRefusal;
 
-/** Hyvor Talk threads a Member imports into one of their Sites (ADR-0007). */
+/** Hyvor Talk conversations a Member imports into one of their Sites (ADR-0007). */
 export interface HyvorImportRequest extends ConsoleSiteRequest {
-  threads: HyvorThread[];
+  conversations: HyvorConversation[];
 }
 
 export type HyvorImportResult =
@@ -123,8 +131,7 @@ export type ConsoleHomeResult =
 
 /** The display name an imported Comment shows, as Fox Renard allows it. */
 function hyvorDisplayName({ name }: HyvorAuthor): string {
-  const displayName = name.normalize("NFC").trim().replace(/\s+/gu, " ");
-  return shorten(displayName, maxDisplayNameLength) || "Anonyme";
+  return shorten(tidyDisplayName(name), maxDisplayNameLength) || "Anonyme";
 }
 
 /** An email worth keeping for a Guest to verify later, as Hyvor gives it. */
@@ -135,8 +142,9 @@ function hyvorEmail({ email }: HyvorAuthor): string | null {
 
 /**
  * Tells one Hyvor author apart from every other on a Site: an account by its
- * Hyvor user id, a guest by their email. Two guests without an email cannot
- * be told apart, so each of their Comments gets a Guest of its own.
+ * Hyvor user id, a Hyvor guest by their email. Two Hyvor guests without an
+ * email cannot be told apart, so each of their Comments gets a Guest of its
+ * own.
  */
 function hyvorAuthorKey(author: HyvorAuthor): string | null {
   if (author.type !== null && author.id !== null) {
@@ -144,6 +152,42 @@ function hyvorAuthorKey(author: HyvorAuthor): string | null {
   }
   const email = hyvorEmail(author);
   return author.type === null && email ? `email:${email.toLowerCase()}` : null;
+}
+
+/**
+ * The Comment an import step creates, with its author. A placeholder keeps
+ * nothing its author said, nor who they were.
+ */
+function hyvorCommentToCreate(
+  step: Exclude<HyvorImportStep, { type: "skip" }>,
+  importedId: (hyvorCommentId: number) => string | undefined,
+) {
+  if (step.type === "placeholder") {
+    return {
+      author: { hyvorAuthorKey: null, displayName: "", email: null },
+      topLevelCommentId: null,
+      text: "",
+      status: "deleted",
+    } as const;
+  }
+  const { author, bodyHtml, status } = step.hyvorComment;
+  const mention = step.answeredName === null ? "" : `@${step.answeredName} `;
+  return {
+    author: {
+      hyvorAuthorKey: hyvorAuthorKey(author),
+      displayName: hyvorDisplayName(author),
+      email: hyvorEmail(author),
+    },
+    topLevelCommentId:
+      step.topLevelHyvorId === null
+        ? null
+        : (importedId(step.topLevelHyvorId) ?? null),
+    text: shorten(
+      tidyCommentText(mention + plainTextOf(bodyHtml)),
+      maxCommentLength,
+    ),
+    status: status === "pending" ? "pending" : "published",
+  } as const;
 }
 
 function consoleCommentView(
@@ -313,7 +357,7 @@ export function createConsole({
     },
 
     /**
-     * Imports Hyvor Talk threads into a Site, keyed by Hyvor comment id, so
+     * Imports Hyvor Talk conversations into a Site, keyed by Hyvor comment id, so
      * that importing them again creates nothing new (ADR-0007). An imported
      * Comment keeps its date and Hyvor's status: it passes no bot check, rate
      * limit or link rule, and emails nobody. Its author is a Guest. No
@@ -325,23 +369,18 @@ export function createConsole({
       const { siteId } = found;
 
       const counts = { imported: 0, skipped: 0, alreadyPresent: 0 };
-      for (const thread of request.threads) {
+      for (const conversation of request.conversations) {
         const page = await store.findOrCreatePage(siteId, {
-          ...thread.page,
-          title: shorten(thread.page.title, maxPageTitleLength),
+          ...conversation.page,
+          title: shorten(conversation.page.title, maxPageTitleLength),
         });
         const known = await store.findHyvorComments(
           page.id,
-          thread.comments.map(({ id }) => id),
+          conversation.comments.map(({ id }) => id),
         );
 
-        for (const step of hyvorImportSteps(thread, hyvorDisplayName)) {
-          const {
-            id: hyvorCommentId,
-            createdAt,
-            status,
-            author,
-          } = step.hyvorComment;
+        for (const step of hyvorImportSteps(conversation, hyvorDisplayName)) {
+          const { id: hyvorCommentId, createdAt } = step.hyvorComment;
           if (step.type !== "comment") counts.skipped += 1;
           if (step.type === "skip") continue;
           if (known.has(hyvorCommentId)) {
@@ -349,56 +388,25 @@ export function createConsole({
             continue;
           }
 
-          const createdAtDate = new Date(createdAt * 1000);
-          if (step.type === "placeholder") {
-            // Nothing its author said stays, nor who they were.
-            const commenter = await store.findOrCreateHyvorCommenter({
-              siteId,
-              hyvorAuthorKey: null,
-              displayName: "",
-              email: null,
-            });
-            const { id } = await store.createComment({
-              pageId: page.id,
-              commenterId: commenter.id,
-              displayName: "",
-              topLevelCommentId: null,
-              text: "",
-              status: "deleted",
-              createdAt: createdAtDate,
-              hyvorCommentId,
-            });
-            known.set(hyvorCommentId, id);
-            continue;
-          }
-
-          const topLevelCommentId =
-            step.topLevelHyvorId === null
-              ? null
-              : (known.get(step.topLevelHyvorId) ?? null);
-          const displayName = hyvorDisplayName(author);
-          const body = plainTextOf(step.hyvorComment.bodyHtml);
+          const placed = hyvorCommentToCreate(step, (hyvorId) =>
+            known.get(hyvorId),
+          );
           const commenter = await store.findOrCreateHyvorCommenter({
             siteId,
-            hyvorAuthorKey: hyvorAuthorKey(author),
-            displayName,
-            email: hyvorEmail(author),
+            ...placed.author,
           });
           const { id } = await store.createComment({
             pageId: page.id,
             commenterId: commenter.id,
-            displayName,
-            topLevelCommentId,
-            text:
-              step.answeredName === null
-                ? body
-                : `@${step.answeredName} ${body}`,
-            status: status === "pending" ? "pending" : "published",
-            createdAt: createdAtDate,
+            displayName: placed.author.displayName,
+            topLevelCommentId: placed.topLevelCommentId,
+            text: placed.text,
+            status: placed.status,
+            createdAt: new Date(createdAt * 1000),
             hyvorCommentId,
           });
           known.set(hyvorCommentId, id);
-          counts.imported += 1;
+          if (step.type === "comment") counts.imported += 1;
         }
       }
       return { outcome: "imported", ...counts };

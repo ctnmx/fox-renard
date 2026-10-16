@@ -1,18 +1,16 @@
-import { createClient } from "@fox-renard/api/client";
+import { createClient, sessionCookieName } from "@fox-renard/api/client";
 import {
+  addHyvorImportCounts,
   type HyvorExport,
   type HyvorImportCounts,
   hyvorImportBatches,
 } from "@fox-renard/core";
 
 /**
- * How many Hyvor Comments each request carries at most, unless one thread
+ * How many Hyvor Comments each request carries at most, unless one conversation
  * holds more: each request then stays within the Worker's CPU limit.
  */
 const defaultMaxComments = 10;
-
-/** The cookie that holds the console session, as the HTTP API sets it. */
-const sessionCookie = "__Host-fox-renard-session";
 
 export interface ImportRun {
   hyvorExport: HyvorExport;
@@ -64,7 +62,7 @@ export async function runImport({
   const cookie = session.headers
     .getSetCookie()
     .map((setCookie) => setCookie.split(";")[0] ?? "")
-    .find((pair) => pair.startsWith(`${sessionCookie}=`));
+    .find((pair) => pair.startsWith(`${sessionCookieName}=`));
   if (session.status !== 204 || !cookie) {
     throw new Error(
       "This sign-in link did not sign in: it may be used or expired. Run the import again for a new one.",
@@ -72,21 +70,18 @@ export async function runImport({
   }
   const headers = { Cookie: cookie };
 
-  const total = { imported: 0, skipped: 0, alreadyPresent: 0 };
+  let total = { imported: 0, skipped: 0, alreadyPresent: 0 };
   try {
-    for (const [index, threads] of batches.entries()) {
+    for (const [index, conversations] of batches.entries()) {
       const response = await client.v1.console.sites[":siteId"][
         "hyvor-import"
-      ].$post({ param: { siteId }, json: { threads } }, { headers });
+      ].$post({ param: { siteId }, json: { conversations } }, { headers });
       if (response.status !== 200) {
         throw new Error(
           `Request ${index + 1} of ${batches.length} failed: ${response.status} ${await response.text()}`,
         );
       }
-      const counts = await response.json();
-      total.imported += counts.imported;
-      total.skipped += counts.skipped;
-      total.alreadyPresent += counts.alreadyPresent;
+      total = addHyvorImportCounts(total, await response.json());
       print(`Sent ${index + 1} of ${batches.length} requests.`);
     }
   } finally {

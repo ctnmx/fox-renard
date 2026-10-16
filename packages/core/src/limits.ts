@@ -12,3 +12,13 @@ export function lengthOf(text: string): number {
 export function shorten(text: string, maxLength: number): string {
   return Array.from(text).slice(0, maxLength).join("");
 }
+
+/** A display name as typed, with its spaces tidied. */
+export function tidyDisplayName(displayName: string): string {
+  return displayName.normalize("NFC").trim().replace(/\s+/gu, " ");
+}
+
+/** A Comment's text as typed, with its line breaks as `\n`. */
+export function tidyCommentText(text: string): string {
+  return text.normalize("NFC").replace(/\r\n?/gu, "\n").trim();
+}

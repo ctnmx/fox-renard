@@ -61,7 +61,7 @@ pnpm --filter @fox-renard/hyvor-import start /path/to/export.json \
   --site <Site id> --email <Member's email> [--api https://console.foxrenard.com]
 ```
 
-The tool emails a sign-in link to the Member and asks for it, as the console does. It then sends the export a few threads at a time and prints how many Comments it imported, skipped (spam or deleted) and found already present. Running it again imports only the Comments posted since. Against the demo, use `--api http://localhost:8787`, where the link is in http://localhost:8787/outbox.
+The tool emails a sign-in link to the Member and asks for it, as the console does. It then sends the export a few conversations at a time and prints how many Comments it imported, skipped (spam or deleted) and found already present. Running it again imports only the Comments posted since. Against the demo, use `--api http://localhost:8787`, where the link is in http://localhost:8787/outbox.
 
 ## Install the Widget
 

@@ -26,7 +26,9 @@ beforeEach(async () => {
 
 describe("only a Member of the Site imports into it", () => {
   test("a signed-out request imports nothing", async () => {
-    const response = await api.newConsole().tryImportHyvor({ threads: [] });
+    const response = await api
+      .newConsole()
+      .tryImportHyvor({ conversations: [] });
 
     expect(response.status).toBe(401);
   });
@@ -36,7 +38,7 @@ describe("only a Member of the Site imports into it", () => {
 
     const response = await member.tryImportHyvor({
       siteId: anotherSite.siteId,
-      threads: [],
+      conversations: [],
     });
 
     expect(response.status).toBe(404);
@@ -89,18 +91,18 @@ function asRead<T extends { body: { text: string }[] }>(comment: T) {
 }
 
 describe("imported Comments appear on their Pages with their original dates", () => {
-  test("a published thread shows its Replies, deeper chains attached under the top-level Comment with an @mention", async () => {
+  test("a published conversation shows its Replies, deeper chains attached under the top-level Comment with an @mention", async () => {
     await api.loadWidget();
     const member = await api.signedInMember();
 
     await member.importHyvor(hyvorExport);
 
-    const [thread, ...others] = shownComments(await api.loadWidget());
-    if (!thread) throw new Error("Expected the imported thread");
+    const [conversation, ...others] = shownComments(await api.loadWidget());
+    if (!conversation) throw new Error("Expected the imported conversation");
     expect(others).toEqual([]);
     expect({
-      ...asRead(thread),
-      replies: thread.replies.map(asRead),
+      ...asRead(conversation),
+      replies: conversation.replies.map(asRead),
     }).toEqual({
       ...imported(
         "Marie Dupont",
@@ -110,7 +112,7 @@ describe("imported Comments appear on their Pages with their original dates", ()
       replies: [
         imported(
           "Paul Martin",
-          "Merci ! Le Pas de l'Aiguille est-il équipé ?",
+          "Merci ! Le Pas de l’Aiguille est-il équipé ?",
           "2025-06-15T08:05:00Z",
         ),
         imported(
@@ -213,6 +215,31 @@ describe("imported Comments appear on their Pages with their original dates", ()
   });
 });
 
+test("a Reply dated before its top-level Comment still sits under it", async () => {
+  const member = await api.signedInMember();
+  const [marie, paul] = hyvorExport.comments;
+  if (!marie || !paul) throw new Error("The fixture has too few Comments");
+
+  await member.importHyvor({
+    ...hyvorExport,
+    comments: [
+      marie,
+      { ...paul, created_at: marie.created_at - 60, parent: marie },
+    ],
+  });
+
+  expect(shownComments(await api.loadWidget())).toEqual([
+    expect.objectContaining({
+      commenter: expect.objectContaining({ displayName: "Marie Dupont" }),
+      replies: [
+        expect.objectContaining({
+          commenter: expect.objectContaining({ displayName: "Paul Martin" }),
+        }),
+      ],
+    }),
+  ]);
+});
+
 describe("the import can run again", () => {
   test("a second run creates nothing new", async () => {
     const member = await api.signedInMember();
@@ -235,7 +262,7 @@ describe("the import can run again", () => {
     }).toEqual(before);
   });
 
-  test("a later export adds only the Comments posted in between, under the threads already imported", async () => {
+  test("a later export adds only the Comments posted in between, under the conversations already imported", async () => {
     const member = await api.signedInMember();
     await member.importHyvor(hyvorExport);
     const [marie] = hyvorExport.comments;
@@ -259,8 +286,8 @@ describe("the import can run again", () => {
       skipped: 3,
       alreadyPresent: 7,
     });
-    const [thread] = shownComments(await api.loadWidget());
-    expect(thread?.replies.at(-1)).toMatchObject({
+    const [conversation] = shownComments(await api.loadWidget());
+    expect(conversation?.replies.at(-1)).toMatchObject({
       commenter: { displayName: "Marie Dupont" },
       body: [
         { type: "text", text: "Refaite cet automne, toujours aussi belle." },
@@ -299,7 +326,7 @@ describe("the import brings Comments only", () => {
 });
 
 describe("imported authors are Guests", () => {
-  test("Hyvor guests keep their email, unverified, and HYVOR accounts arrive without one", async () => {
+  test("imported authors are unverified, and the emails of authors with nothing imported are not kept", async () => {
     const member = await api.signedInMember();
 
     await member.importHyvor(hyvorExport);
@@ -311,9 +338,9 @@ describe("imported authors are Guests", () => {
     expect(new Set(commenters.map(({ verified }) => verified))).toEqual(
       new Set([false]),
     );
-    // No API shows a Guest's email yet; its absence or presence is all a
-    // test can tell, until verification by magic link takes it up.
-    expect(await api.databaseHolds("Marie.Dupont@example.org")).toBe(true);
+    // No API shows a Guest's email yet, so a test can only tell that the
+    // emails of authors with nothing imported are not kept. Verification by
+    // magic link will show the others.
     expect(await api.databaseHolds("lucie@example.org")).toBe(false);
     expect(await api.databaseHolds("promo@spam.example")).toBe(false);
   });

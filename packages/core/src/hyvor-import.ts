@@ -1,7 +1,7 @@
 /**
  * Importing Comments from a Hyvor Talk JSON export (ADR-0007). The import
- * tool reads the export and sends it, thread by thread, to a Member-only
- * endpoint; Core decides what each Hyvor Comment becomes.
+ * tool reads the export and sends it, a few conversations at a time, to a
+ * Member-only endpoint; Core decides what each Hyvor Comment becomes.
  */
 
 /** A Hyvor Talk Comment's status, which decides whether it is imported. */
@@ -14,13 +14,16 @@ export const hyvorStatuses = [
 
 export type HyvorStatus = (typeof hyvorStatuses)[number];
 
-/** Who wrote a Hyvor Comment: a HYVOR or SSO account, or a guest (`type: null`). */
+/**
+ * Who wrote a Hyvor Comment: a HYVOR or SSO account, or a Hyvor guest
+ * (`type: null`), who gave a name and maybe an email.
+ */
 export interface HyvorAuthor {
   type: "hyvor" | "sso" | null;
-  /** The account's Hyvor user id, or `null` for a guest. */
+  /** The account's Hyvor user id, or `null` for a Hyvor guest. */
   id: number | null;
   name: string;
-  /** Hyvor shares a guest's email, never a HYVOR account's. */
+  /** Hyvor shares a Hyvor guest's email, never a HYVOR account's. */
   email: string | null;
 }
 
@@ -36,8 +39,11 @@ export interface HyvorComment {
   author: HyvorAuthor;
 }
 
-/** A Hyvor top-level Comment with every Comment answering it, on its Page. */
-export interface HyvorThread {
+/**
+ * A Hyvor conversation: a top-level Hyvor Comment with every Comment
+ * answering it, however deep, on its Page.
+ */
+export interface HyvorConversation {
   /** Hyvor's page `identifier` is the Page Key. */
   page: { key: string; url: string; title: string };
   comments: HyvorComment[];
@@ -51,6 +57,18 @@ export interface HyvorImportCounts {
   skipped: number;
   /** Comments an earlier run already imported. */
   alreadyPresent: number;
+}
+
+/** What several import requests did, added up. */
+export function addHyvorImportCounts(
+  a: HyvorImportCounts,
+  b: HyvorImportCounts,
+): HyvorImportCounts {
+  return {
+    imported: a.imported + b.imported,
+    skipped: a.skipped + b.skipped,
+    alreadyPresent: a.alreadyPresent + b.alreadyPresent,
+  };
 }
 
 // The parts of the Hyvor Talk JSON export the import reads, as documented at
@@ -91,52 +109,60 @@ function idOf(reference: { id: number } | number | null): number | null {
 }
 
 /**
- * The export's threads in import requests of about `maxComments` Comments
- * each, oldest thread first. A thread is never split, so that each request
- * holds everything Core needs to place its Replies.
+ * The top-level Comment a Hyvor Comment answers, however deep: the first
+ * ancestor whose parent is not in `byId`. A cycle stops where it closes.
+ */
+function topLevelOf<C extends { id: number }>(
+  comment: C,
+  byId: Map<number, C>,
+  parentIdOf: (comment: C) => number | null,
+): C {
+  const seen = new Set<number>();
+  let top = comment;
+  for (;;) {
+    seen.add(top.id);
+    const parent = byId.get(parentIdOf(top) ?? Number.NaN);
+    if (!parent || seen.has(parent.id)) return top;
+    top = parent;
+  }
+}
+
+/**
+ * The export's conversations in import requests of about `maxComments`
+ * Comments each, oldest first. A conversation is never split, so that each
+ * request holds everything Core needs to place its Replies.
  */
 export function hyvorImportBatches(
   hyvorExport: HyvorExport,
   maxComments: number,
-): HyvorThread[][] {
+): HyvorConversation[][] {
   if (!Array.isArray(hyvorExport?.comments)) {
     throw new Error("This is not a Hyvor Talk JSON export: it has no comments");
   }
   const pages = new Map(hyvorExport.pages?.map((page) => [page.id, page]));
   const byId = new Map(hyvorExport.comments.map((c) => [c.id, c]));
 
-  const rootOf = (comment: HyvorExportComment) => {
-    const seen = new Set<number>();
-    let root = comment;
-    for (;;) {
-      seen.add(root.id);
-      const parent = byId.get(idOf(root.parent) ?? Number.NaN);
-      if (!parent || seen.has(parent.id)) return root;
-      root = parent;
-    }
-  };
-
-  const threads = new Map<number, HyvorThread>();
+  const conversations = new Map<number, HyvorConversation>();
   const oldestFirst = hyvorExport.comments.toSorted(
     (a, b) => a.created_at - b.created_at || a.id - b.id,
   );
   for (const comment of oldestFirst) {
-    const root = rootOf(comment);
-    let thread = threads.get(root.id);
-    if (!thread) {
+    const root = topLevelOf(comment, byId, ({ parent }) => idOf(parent));
+    let conversation = conversations.get(root.id);
+    if (!conversation) {
       const page =
         typeof root.page === "number" ? pages.get(root.page) : root.page;
       if (!page) {
         throw new Error(`Hyvor comment ${root.id} has no page in the export`);
       }
-      thread = {
+      conversation = {
         page: { key: page.identifier, url: page.url, title: page.title },
         comments: [],
       };
-      threads.set(root.id, thread);
+      conversations.set(root.id, conversation);
     }
     const { user } = comment;
-    thread.comments.push({
+    conversation.comments.push({
       id: comment.id,
       createdAt: comment.created_at,
       status: comment.status,
@@ -151,36 +177,70 @@ export function hyvorImportBatches(
     });
   }
 
-  const batches: HyvorThread[][] = [];
-  let batch: HyvorThread[] = [];
+  const batches: HyvorConversation[][] = [];
+  let batch: HyvorConversation[] = [];
   let size = 0;
-  for (const thread of threads.values()) {
-    if (size > 0 && size + thread.comments.length > maxComments) {
+  for (const conversation of conversations.values()) {
+    if (size > 0 && size + conversation.comments.length > maxComments) {
       batches.push(batch);
       batch = [];
       size = 0;
     }
-    batch.push(thread);
-    size += thread.comments.length;
+    batch.push(conversation);
+    size += conversation.comments.length;
   }
   if (batch.length > 0) batches.push(batch);
   return batches;
 }
 
+/**
+ * The named entities Hyvor's HTML may hold: those of markup, and the
+ * punctuation and letters of French.
+ */
 const entities: Record<string, string> = {
   amp: "&",
   lt: "<",
   gt: ">",
   quot: '"',
   apos: "'",
-  nbsp: " ",
+  nbsp: "\u00a0",
+  laquo: "«",
+  raquo: "»",
+  lsquo: "‘",
+  rsquo: "’",
+  ldquo: "“",
+  rdquo: "”",
+  hellip: "…",
+  ndash: "–",
+  mdash: "—",
+  euro: "€",
+  agrave: "à",
+  acirc: "â",
+  ccedil: "ç",
+  eacute: "é",
+  egrave: "è",
+  ecirc: "ê",
+  euml: "ë",
+  icirc: "î",
+  iuml: "ï",
+  ocirc: "ô",
+  ugrave: "ù",
+  ucirc: "û",
+  uuml: "ü",
+  oelig: "œ",
+  Agrave: "À",
+  Ccedil: "Ç",
+  Eacute: "É",
+  Egrave: "È",
+  Ecirc: "Ê",
+  OElig: "Œ",
 };
 
 function decodeEntities(text: string): string {
   return text.replace(
     /&(?:#(\d+)|#x([\da-f]+)|([a-z]+));/giu,
     (entity, decimal, hex, name) => {
-      if (name) return entities[name.toLowerCase()] ?? entity;
+      if (name) return entities[name] ?? entity;
       const codePoint = Number.parseInt(decimal ?? hex, decimal ? 10 : 16);
       return codePoint > 0 && codePoint <= 0x10ffff
         ? String.fromCodePoint(codePoint)
@@ -318,7 +378,7 @@ export function plainTextOf(html: string): string {
     .trim();
 }
 
-/** What Core does with one Hyvor Comment of a thread, in the order to do it. */
+/** What Core does with one Hyvor Comment of a conversation, in the order to do it. */
 export type HyvorImportStep =
   | {
       type: "comment";
@@ -341,41 +401,44 @@ const importedStatuses: ReadonlySet<HyvorStatus> = new Set([
 ]);
 
 /**
- * The steps that import a thread, oldest first. Published and Pending
+ * The steps that import a conversation: its top-level Comment first, so that
+ * its Replies find it, then its Replies oldest first. Published and Pending
  * Comments are imported; spam and deleted ones are skipped, but a top-level
  * one whose Replies are imported leaves a placeholder that holds them. Every
  * Reply sits under its top-level Comment, and a Reply to a Reply names whom it
  * answers, as live Replies do.
  */
 export function hyvorImportSteps(
-  thread: HyvorThread,
+  conversation: HyvorConversation,
   displayNameOf: (author: HyvorAuthor) => string,
 ): HyvorImportStep[] {
-  const byId = new Map(thread.comments.map((c) => [c.id, c]));
-  const topLevelOf = (comment: HyvorComment): HyvorComment => {
-    const seen = new Set<number>();
-    let top = comment;
-    for (;;) {
-      seen.add(top.id);
-      const parent = byId.get(top.parentId ?? Number.NaN);
-      if (!parent || seen.has(parent.id)) return top;
-      top = parent;
-    }
-  };
+  const byId = new Map(conversation.comments.map((c) => [c.id, c]));
+  const tops = new Map(
+    conversation.comments.map((comment) => [
+      comment,
+      topLevelOf(comment, byId, ({ parentId }) => parentId),
+    ]),
+  );
+  const topOf = (comment: HyvorComment) => tops.get(comment) ?? comment;
 
-  const oldestFirst = thread.comments.toSorted(
-    (a, b) => a.createdAt - b.createdAt || a.id - b.id,
+  // A Reply's date may precede its top-level Comment's, so dates alone do
+  // not order them.
+  const ordered = conversation.comments.toSorted(
+    (a, b) =>
+      Number(topOf(a) !== a) - Number(topOf(b) !== b) ||
+      a.createdAt - b.createdAt ||
+      a.id - b.id,
   );
   const holdsReplies = new Set<number>();
-  for (const comment of oldestFirst) {
-    const top = topLevelOf(comment);
+  for (const comment of ordered) {
+    const top = topOf(comment);
     if (top !== comment && importedStatuses.has(comment.status)) {
       holdsReplies.add(top.id);
     }
   }
 
-  return oldestFirst.map((comment): HyvorImportStep => {
-    const top = topLevelOf(comment);
+  return ordered.map((comment): HyvorImportStep => {
+    const top = topOf(comment);
     if (!importedStatuses.has(comment.status)) {
       return top === comment && holdsReplies.has(comment.id)
         ? { type: "placeholder", hyvorComment: comment }

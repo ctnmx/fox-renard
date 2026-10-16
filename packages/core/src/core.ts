@@ -8,6 +8,8 @@ import {
   maxDisplayNameLength,
   maxPageTitleLength,
   shorten,
+  tidyCommentText,
+  tidyDisplayName,
 } from "./limits";
 import type {
   CastVote,
@@ -715,17 +717,11 @@ export function createCore({
         return { outcome: "bot-check-failed" };
       }
 
-      const displayName = request.displayName
-        .normalize("NFC")
-        .trim()
-        .replace(/\s+/gu, " ");
+      const displayName = tidyDisplayName(request.displayName);
       if (!displayName || lengthOf(displayName) > maxDisplayNameLength) {
         return { outcome: "invalid-display-name" };
       }
-      const text = request.text
-        .normalize("NFC")
-        .replace(/\r\n?/gu, "\n")
-        .trim();
+      const text = tidyCommentText(request.text);
       if (!text) return { outcome: "empty-comment" };
 
       let answered: Comment | null = null;

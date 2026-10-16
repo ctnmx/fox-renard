@@ -120,7 +120,7 @@
         }
       },
       "body": "{\"type\": \"doc\", \"content\": []}",
-      "body_html": "<p>Merci ! Le <strong>Pas de l'Aiguille</strong> est-il équipé ?</p>",
+      "body_html": "<p>Merci ! Le <strong>Pas de l&rsquo;Aiguille</strong> est-il &eacute;quip&eacute; ?</p>",
       "status": "published",
       "parent": {
         "id": 1001,
@@ -290,7 +290,7 @@
           }
         },
         "body": "{\"type\": \"doc\", \"content\": []}",
-        "body_html": "<p>Merci ! Le <strong>Pas de l'Aiguille</strong> est-il équipé ?</p>",
+        "body_html": "<p>Merci ! Le <strong>Pas de l&rsquo;Aiguille</strong> est-il &eacute;quip&eacute; ?</p>",
         "status": "published",
         "parent": {
           "id": 1001,

@@ -1,5 +1,9 @@
 import { hc, type InferResponseType } from "hono/client";
 import type { App } from "./app";
+import { sessionCookie } from "./session-cookie";
+
+/** The console session's cookie, by the name a client sends it under. */
+export const sessionCookieName = `__Host-${sessionCookie}`;
 
 export {
   type CommentSort,

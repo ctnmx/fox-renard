@@ -1,9 +1,10 @@
 import {
+  addHyvorImportCounts,
   type CommentSort,
   createCore,
+  type HyvorConversation,
   type HyvorExport,
   type HyvorImportCounts,
-  type HyvorThread,
   hyvorImportBatches,
   type ListedStatus,
   magicLinkParameter,
@@ -471,23 +472,23 @@ export async function startTestApi() {
       tryImportHyvor,
 
       /**
-       * Imports a Hyvor Talk export into a Site, in requests of a few threads
+       * Imports a Hyvor Talk export into a Site, in requests of a few conversations
        * as the import tool sends them, and adds up what they did.
        */
       async importHyvor(
         hyvorExport: HyvorExport,
         { siteId = rectoVerso.siteId, maxComments = 3 } = {},
       ): Promise<HyvorImportCounts> {
-        const total = { imported: 0, skipped: 0, alreadyPresent: 0 };
-        for (const threads of hyvorImportBatches(hyvorExport, maxComments)) {
-          const response = await tryImportHyvor({ siteId, threads });
+        let total = { imported: 0, skipped: 0, alreadyPresent: 0 };
+        for (const conversations of hyvorImportBatches(
+          hyvorExport,
+          maxComments,
+        )) {
+          const response = await tryImportHyvor({ siteId, conversations });
           if (response.status !== 200) {
             throw new Error(`Expected the import, got ${response.status}`);
           }
-          const counts = await response.json();
-          total.imported += counts.imported;
-          total.skipped += counts.skipped;
-          total.alreadyPresent += counts.alreadyPresent;
+          total = addHyvorImportCounts(total, await response.json());
         }
         return total;
       },
@@ -495,13 +496,13 @@ export async function startTestApi() {
 
     function tryImportHyvor({
       siteId = rectoVerso.siteId,
-      threads,
+      conversations,
     }: {
       siteId?: string;
-      threads: HyvorThread[];
+      conversations: HyvorConversation[];
     }) {
       return client.v1.console.sites[":siteId"]["hyvor-import"].$post(
-        { param: { siteId }, json: { threads } },
+        { param: { siteId }, json: { conversations } },
         withCookie(),
       );
     }
