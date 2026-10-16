@@ -18,7 +18,8 @@ import {
   tidyDisplayName,
 } from "./limits";
 import type { Comment, ListedStatus, Member, Page } from "./model";
-import type { Clock, EmailSender, Store } from "./ports";
+import { photoKey } from "./photo-file";
+import type { Clock, EmailSender, PhotoStore, Store } from "./ports";
 
 const hour = 60 * 60 * 1000;
 const day = 24 * hour;
@@ -210,13 +211,20 @@ export function createConsole({
   store,
   clock,
   email: emailSender,
+  photos,
   consoleOrigin,
 }: {
   store: Store;
   clock: Clock;
   email: EmailSender;
+  photos: PhotoStore;
   consoleOrigin: string;
 }) {
+  /** Deletes a Comment's Photos from the Photo store, before their records go. */
+  async function deletePhotoFiles({ photoIds }: Comment): Promise<void> {
+    await Promise.all(photoIds.map((id) => photos.delete(photoKey(id))));
+  }
+
   // The store only ever sees a hash of the token, so a leaked database
   // cannot be used to sign in.
   async function signedIn({
@@ -433,7 +441,7 @@ export function createConsole({
     /**
      * Deletes a Comment. A top-level Comment with Replies leaves a
      * placeholder that keeps them, and a placeholder goes with its last Reply.
-     * Comments hold no Photo yet: #12 deletes them with their Comment.
+     * Its Photos go with what it said.
      */
     async deleteComment(
       request: CommentModerationRequest,
@@ -441,6 +449,7 @@ export function createConsole({
       const found = await commentToModerate(request);
       if (found.outcome !== "found") return found;
       const { id, topLevelCommentId } = found.comment;
+      await deletePhotoFiles(found.comment);
 
       if (topLevelCommentId === null) {
         if ((await store.countReplies(id)) > 0) {

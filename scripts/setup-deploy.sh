@@ -216,7 +216,7 @@ keep_secret() {
 
 run_wizard() {
 
-TOTAL_STAGES=11
+TOTAL_STAGES=12
 ENV_FILE=".env.deploy"
 cd "$(git rev-parse --show-toplevel)"
 
@@ -347,6 +347,19 @@ step "Back in Brevo, select Authenticate."
 step "Then, under Senders, add the sender Fox Renard <noreply@foxrenard.com>."
 note "On an authenticated domain, Brevo verifies a sender without emailing it a code."
 pause "Authenticated? Brevo can take up to 48 hours. Press Enter"
+
+stage "Cloudflare: R2 buckets for Photos"
+say "Photos live in R2: one bucket for production, and one that every"
+say "preview shares, so no production Photo reaches a preview (ADR-0008)."
+open_url "https://dash.cloudflare.com/?to=/:account/r2/overview"
+step "If R2 is not on yet, turn it on. Cloudflare asks for a payment method, but charges nothing within the free tier."
+step "Create the bucket fox-renard-photos, with the location hint Western Europe (WEUR)."
+step "Create the bucket fox-renard-photos-preview, with the same location hint."
+step "In fox-renard-photos-preview, open Settings, Object lifecycle rules, and add a rule that deletes objects 30 days after upload."
+note "A bucket that already exists stays as it is: skip its step."
+note "Both stay private: the Worker serves each Photo, and only while its Comment shows."
+warn "Every deployment binds these buckets, so it fails until both exist."
+pause "Both buckets exist? Press Enter"
 
 stage "Turn deployments on"
 say "Setting the variable CLOUDFLARE_ACCOUNT_ID turns deployments on: merging to"

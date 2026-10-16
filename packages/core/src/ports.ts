@@ -7,6 +7,7 @@ import type {
   MagicLink,
   Member,
   Page,
+  Photo,
   Reaction,
   Site,
   Visitor,
@@ -97,6 +98,21 @@ export interface Store {
     displayName: string;
     email: string | null;
   }): Promise<{ id: string }>;
+  /**
+   * Adds a Photo to a Comment unless it already holds `atMost`, counted
+   * under a lock on the Comment, so that uploads sent at once cannot pass
+   * the limit together. Answers `null` when the Comment is full.
+   */
+  createPhoto(
+    photo: Omit<Photo, "id">,
+    { atMost }: { atMost: number },
+  ): Promise<Photo | null>;
+  /** One of a Site's Photos, with the status of the Comment it belongs to. */
+  findPhoto(
+    siteId: string,
+    photoId: string,
+  ): Promise<(Photo & { commentStatus: CommentStatus }) | null>;
+  deletePhoto(photoId: string): Promise<void>;
   /** One of a Page's Comments, top-level or Reply. */
   findComment(pageId: string, commentId: string): Promise<Comment | null>;
   /** A Page's Comments and Replies, newest first. */
@@ -171,11 +187,11 @@ export interface Store {
   setCommentStatus(commentId: string, status: CommentStatus): Promise<void>;
   /** How many Replies a top-level Comment has, whatever their status. */
   countReplies(commentId: string): Promise<number>;
-  /** Deletes a Comment with its Votes. */
+  /** Deletes a Comment with its Votes and its Photos' records. */
   deleteComment(commentId: string): Promise<void>;
   /**
-   * Deletes what a top-level Comment said, its display name and its Votes,
-   * and leaves it as a placeholder for its Replies.
+   * Deletes what a top-level Comment said, its display name, its Votes and
+   * its Photos' records, and leaves it as a placeholder for its Replies.
    */
   leavePlaceholder(commentId: string): Promise<void>;
 }

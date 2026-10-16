@@ -3,6 +3,7 @@ import { createClient } from "@fox-renard/api/client";
 import { rectoVerso } from "@fox-renard/db";
 import { apiOrigin, siteOrigin } from "@fox-renard/demo/addresses";
 import { expect, type Page, test } from "@playwright/test";
+import postgres from "postgres";
 
 // Seam 3: the Worker as Cloudflare runs it, with Hyperdrive, its secrets and
 // its schedule, driven from the demo route sheet. Tests tagged @smoke also run
@@ -165,4 +166,49 @@ test("the hourly Cron Trigger runs the erasure without failing", async ({
   );
 
   expect(cronTrigger.status()).toBe(200);
+});
+
+test("a Verified Commenter's Photo is stored in R2 and served back by the Worker", async ({
+  page,
+  request,
+}) => {
+  await page.setExtraHTTPHeaders({ "CF-Connecting-IP": newNetwork() });
+  await page.goto(`/article/seam-3-${randomUUID()}`);
+  let widget = await scrollToWidget(page);
+  const text = `Premier passage ${randomUUID()}.`;
+  await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie");
+  await widget.getByRole("textbox", { name: "Ton commentaire" }).fill(text);
+  await widget.getByRole("button", { name: "Publier" }).click();
+  await expect(widget.getByRole("article")).toContainText(text);
+
+  // Seam 3 sends no email, so the test verifies Marie the way her magic
+  // link would.
+  const sql = postgres(process.env.TEST_DATABASE_URL ?? "");
+  try {
+    await sql`update commenters set verified_at = now(), email = ${`marie-${randomUUID()}@example.com`}
+      where id = (select commenter_id from comments where text = ${text})`;
+  } finally {
+    await sql.end();
+  }
+  await page.reload();
+  widget = await scrollToWidget(page);
+
+  await widget
+    .getByRole("textbox", { name: "Ton commentaire" })
+    .fill("Le sommet, vu du col.");
+  await widget
+    .getByLabel("Ajouter des photos")
+    .setInputFiles(
+      new URL("../../demo/tests/fixtures/gps-photo.jpg", import.meta.url)
+        .pathname,
+    );
+  await widget.getByRole("button", { name: "Publier" }).click();
+
+  const photo = widget.getByRole("img", { name: "Photo de Marie" });
+  await expect(photo).toBeVisible();
+  const src = await photo.getAttribute("src");
+  if (!src) throw new Error("The Photo has no address");
+  const served = await request.get(src);
+  expect(served.headers()["content-type"]).toBe("image/webp");
+  expect((await served.body()).toString("latin1", 8, 12)).toBe("WEBP");
 });

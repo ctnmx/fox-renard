@@ -116,4 +116,18 @@ export interface Comment {
   status: CommentStatus;
   createdAt: Date;
   voteCounts: VoteCounts;
+  /** The ids of its Photos, oldest first. */
+  photoIds: string[];
+}
+
+/** The formats a Photo is stored in: WebP, or PNG from a browser that cannot make WebP. */
+export const photoContentTypes = ["image/webp", "image/png"] as const;
+
+export type PhotoContentType = (typeof photoContentTypes)[number];
+
+/** An image a Verified Commenter attached to a Comment, as stored. */
+export interface Photo {
+  id: string;
+  commentId: string;
+  contentType: PhotoContentType;
 }

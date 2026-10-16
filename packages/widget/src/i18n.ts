@@ -46,6 +46,14 @@ const fr = {
   sortTop: "Top",
   sortNewest: "Plus récents",
   sortOldest: "Plus anciens",
+  addPhotos: "Ajouter des photos",
+  photosHint:
+    "Jusqu'à {count} photos. Leur position et les infos de l'appareil sont retirées avant l'envoi.",
+  tooManyPhotos: "Seules les {count} premières photos seront jointes.",
+  photoOf: "Photo de {name}",
+  photoUnreadable:
+    "Une de tes photos n'a pas pu être lue. Choisis-en une autre, en JPEG ou PNG.",
+  photoNotAttached: "Une de tes photos n'a pas pu être jointe.",
 };
 
 /** The language of the strings above, for dates and numbers. */

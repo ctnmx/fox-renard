@@ -32,11 +32,18 @@
   },
   // CI replaces each id with the Hyperdrive config of the deployment's database.
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "production-hyperdrive-id" }],
+  // Photos. scripts/setup-deploy.sh creates both buckets.
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "fox-renard-photos" }],
   // Workers Logs stay off: each request's log would keep its headers, the
   // client's IP address among them (ADR-0006). `wrangler tail` streams logs
   // without storing them.
   "previews": {
     "vars": { "EMAIL_SENDER_ADDRESS": "noreply@foxrenard.com" },
-    "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "preview-hyperdrive-id" }]
+    "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "preview-hyperdrive-id" }],
+    // Previews never hold production data (ADR-0008): their Photos share a
+    // bucket of their own, which forgets each Photo after 30 days.
+    "r2_buckets": [
+      { "binding": "PHOTOS", "bucket_name": "fox-renard-photos-preview" }
+    ]
   }
 }

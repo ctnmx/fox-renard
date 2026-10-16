@@ -25,6 +25,7 @@
     "@fox-renard/widget": "workspace:*",
     "@playwright/test": "catalog:",
     "@types/node": "catalog:",
+    "postgres": "catalog:",
     "typescript": "catalog:",
     "wrangler": "catalog:"
   }
