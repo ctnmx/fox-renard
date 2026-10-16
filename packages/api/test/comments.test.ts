@@ -41,6 +41,7 @@ describe("a Guest posts a Comment", () => {
         voteCounts: { up: 0, down: 0 },
         vote: null,
         pending: false,
+        photos: [],
         replies: [],
       },
     ]);

@@ -659,6 +659,33 @@ export async function startTestApi() {
       return { status: response.status, followed };
     }
 
+    /** Attaches a Photo to a Comment this browser posted, as the Widget sends it. */
+    function tryAttachPhoto(
+      commentId: string,
+      photo: Uint8Array,
+      {
+        page = routeSheet,
+        contentType = "image/webp",
+      }: { page?: WidgetPage; contentType?: string } = {},
+    ) {
+      return client.v1.sites[":siteId"].pages[":pageKey"].comments[
+        ":commentId"
+      ].photos.$post(
+        {
+          param: { siteId: page.siteId, pageKey: page.pageKey, commentId },
+          header: authorization(browserTokens.get(page.siteId)),
+        },
+        {
+          headers: {
+            Origin: page.origin,
+            [clientIpHeader]: clientIp,
+            "Content-Type": contentType,
+          },
+          init: { body: new Uint8Array(photo) },
+        },
+      );
+    }
+
     return {
       /** The browser's token for Recto Verso. */
       get browserToken() {
@@ -697,6 +724,22 @@ export async function startTestApi() {
 
       tryFollowMagicLink,
 
+      tryAttachPhoto,
+
+      async attachPhoto(
+        commentId: string,
+        photo: Uint8Array,
+        options: { page?: WidgetPage; contentType?: string } = {},
+      ) {
+        const response = await tryAttachPhoto(commentId, photo, options);
+        if (response.status !== 201) {
+          throw new Error(
+            `Expected the Photo to attach, got ${response.status} ${await response.text()}`,
+          );
+        }
+        return (await response.json()).photo;
+      },
+
       async followMagicLink(link: string, { page = routeSheet } = {}) {
         const { status, followed } = await tryFollowMagicLink(link, { page });
         if (!followed) {
@@ -721,8 +764,27 @@ export async function startTestApi() {
     };
   }
 
+  /** A Photo, as any page showing it loads it. */
+  function getPhoto(
+    photoId: string,
+    {
+      siteId = rectoVerso.siteId as string,
+      heldTag,
+    }: {
+      siteId?: string;
+      /** The ETag of the copy the browser holds. */
+      heldTag?: string;
+    } = {},
+  ) {
+    return client.v1.sites[":siteId"].photos[":photoId"].$get(
+      { param: { siteId, photoId } },
+      { headers: heldTag ? { "If-None-Match": heldTag } : {} },
+    );
+  }
+
   return {
     client,
+    getPhoto,
     /** Calls the HTTP API as `fetch` would, for a client such as the import tool. */
     fetch: async (input: string | URL | Request, init?: RequestInit) =>
       app.request(input, init),

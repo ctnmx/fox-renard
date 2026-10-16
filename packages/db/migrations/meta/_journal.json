@@ -64,6 +64,13 @@
       "when": 1792147307392,
       "tag": "0008_hyvor-import",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792156545717,
+      "tag": "0009_photos",
+      "breakpoints": true
     }
   ]
 }

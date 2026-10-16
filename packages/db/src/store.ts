@@ -29,6 +29,7 @@ import {
   members,
   organizations,
   pages,
+  photos,
   rateLimitHits,
   reactions,
   signInLinks,
@@ -97,6 +98,14 @@ export function createStore(db: Database): Store {
     );
   }
 
+  /**
+   * The ids of the Photos of the Comment of the row being read, oldest first,
+   * as JSON: postgres.js on Hyperdrive fetches no array types.
+   */
+  const photoIds = sql<
+    string[]
+  >`(select coalesce(json_agg(${photos.id} order by ${photos.createdAt}, ${photos.id}), '[]'::json) from ${photos} where ${photos.commentId} = ${comments.id})`;
+
   const commentColumns = {
     id: comments.id,
     commenter: {
@@ -109,6 +118,7 @@ export function createStore(db: Database): Store {
     status: comments.status,
     createdAt: comments.createdAt,
     voteCounts: { up: countOf("up"), down: countOf("down") },
+    photoIds,
   };
 
   function selectComments() {
@@ -426,6 +436,47 @@ export function createStore(db: Database): Store {
       return found;
     },
 
+    async createPhoto(photo, { atMost }) {
+      return db.transaction(async (tx) => {
+        await tx
+          .select({ id: comments.id })
+          .from(comments)
+          .where(eq(comments.id, photo.commentId))
+          .for("update");
+        const [held] = await tx
+          .select({ count: count() })
+          .from(photos)
+          .where(eq(photos.commentId, photo.commentId));
+        if ((held?.count ?? 0) >= atMost) return null;
+        const [created] = await tx.insert(photos).values(photo).returning({
+          id: photos.id,
+          commentId: photos.commentId,
+          contentType: photos.contentType,
+        });
+        if (!created) throw new Error("The Photo could not be created");
+        return created;
+      });
+    },
+
+    async findPhoto(siteId, photoId) {
+      const [photo] = await db
+        .select({
+          id: photos.id,
+          commentId: photos.commentId,
+          contentType: photos.contentType,
+          commentStatus: comments.status,
+        })
+        .from(photos)
+        .innerJoin(comments, eq(comments.id, photos.commentId))
+        .innerJoin(pages, eq(pages.id, comments.pageId))
+        .where(and(eq(photos.id, photoId), eq(pages.siteId, siteId)));
+      return photo ?? null;
+    },
+
+    async deletePhoto(photoId) {
+      await db.delete(photos).where(eq(photos.id, photoId));
+    },
+
     async findComment(pageId, commentId) {
       const [comment] = await selectComments().where(
         and(eq(comments.pageId, pageId), eq(comments.id, commentId)),
@@ -687,6 +738,7 @@ export function createStore(db: Database): Store {
           .set({ status: "deleted", displayName: "", text: "" })
           .where(eq(comments.id, commentId));
         await tx.delete(votes).where(eq(votes.commentId, commentId));
+        await tx.delete(photos).where(eq(photos.commentId, commentId));
       });
     },
   };

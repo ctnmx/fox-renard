@@ -3,10 +3,12 @@ import {
   commentSorts,
   hyvorStatuses,
   listedStatuses,
+  maxPhotoBytes,
   voteDirections,
 } from "@fox-renard/core";
 import { zValidator } from "@hono/zod-validator";
 import { type Context, Hono, type ValidationTargets } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import type { GetConnInfo } from "hono/conninfo";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
@@ -101,6 +103,14 @@ const refusals = {
   "rate-limited": 429,
   "sign-in-link-invalid": 410,
   "signed-out": 401,
+  "verification-required": 403,
+  "not-comment-author": 403,
+  "photo-too-late": 422,
+  "too-many-photos": 422,
+  "photo-too-large": 413,
+  "not-a-photo": 415,
+  "photo-has-metadata": 422,
+  "photo-not-found": 404,
 } as const;
 
 /** Answers a refusal with its status and an error code such as `site_not_found`. */
@@ -305,6 +315,55 @@ export function createApp(core: Core, { getConnInfo }: Platform) {
             },
             200,
           );
+        },
+      )
+      .post(
+        "/v1/sites/:siteId/pages/:pageKey/comments/:commentId/photos",
+        validate("param", pageParams.extend({ commentId: z.uuid() })),
+        validate("header", browserTokenHeader),
+        // The body is the file itself, as the Widget made it. Core tells its
+        // type from its bytes, whatever its Content-Type says.
+        bodyLimit({
+          maxSize: maxPhotoBytes,
+          onError: (c) => refuse(c, "photo-too-large"),
+        }),
+        async (c) => {
+          const { siteId, pageKey, commentId } = c.req.valid("param");
+          const { authorization: browserToken } = c.req.valid("header");
+
+          const result = await core.attachPhoto({
+            siteId,
+            domain: requestingDomain(c.req.header("Origin")),
+            pageKey,
+            browserToken: browserToken ?? null,
+            commentId,
+            photo: new Uint8Array(await c.req.arrayBuffer()),
+          });
+          if (result.outcome !== "attached") return refuse(c, result.outcome);
+          return c.json({ photo: result.photo }, 201);
+        },
+      )
+      .get(
+        "/v1/sites/:siteId/photos/:photoId",
+        validate("param", z.object({ siteId: z.uuid(), photoId: z.uuid() })),
+        async (c) => {
+          const result = await core.getPhoto({
+            ...c.req.valid("param"),
+            heldTag: c.req.header("If-None-Match") ?? null,
+          });
+          // A Photo never changes, but goes as soon as its Comment does, so
+          // browsers keep it and ask each time whether it still shows.
+          const caching = { "Cache-Control": "no-cache", ETag: "" };
+          if (result.outcome === "unchanged") {
+            return c.body(null, 304, { ...caching, ETag: result.tag });
+          }
+          if (result.outcome !== "found") return refuse(c, result.outcome);
+          return c.body(new Uint8Array(result.body), 200, {
+            ...caching,
+            ETag: result.tag,
+            "Content-Type": result.contentType,
+            "X-Content-Type-Options": "nosniff",
+          });
         },
       )
       // The console's endpoints answer the console's own origin only: they

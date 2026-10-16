@@ -10,6 +10,8 @@ export {
   type ListedStatus,
   listedStatuses,
   magicLinkParameter,
+  maxPhotoBytes,
+  maxPhotosPerComment,
   signInPath,
   type Vote,
 } from "@fox-renard/core";
