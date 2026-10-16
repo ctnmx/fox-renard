@@ -159,3 +159,27 @@ export async function postComment(
   keepBrowserToken(page.siteId, posted.browserToken);
   return posted;
 }
+
+/** Attaches a prepared Photo to a Comment this browser just posted. */
+export async function attachPhoto(
+  page: PageConnection,
+  commentId: string,
+  photo: Blob,
+) {
+  const { endpoints, param, header } = pageRequest(page);
+  const response = await endpoints.comments[":commentId"].photos.$post(
+    { param: { ...param, commentId }, header },
+    { headers: { "Content-Type": photo.type }, init: { body: photo } },
+  );
+  if (response.status !== 201) {
+    throw new Refused((await response.json()).error);
+  }
+  return (await response.json()).photo;
+}
+
+/** Where a page loads a Photo from. */
+export function photoUrl({ client, siteId }: PageConnection, photoId: string) {
+  return client.v1.sites[":siteId"].photos[":photoId"]
+    .$url({ param: { siteId, photoId } })
+    .toString();
+}

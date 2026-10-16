@@ -194,7 +194,9 @@ jobs:
           pnpm exec wrangler preview base-config secret bulk "$RUNNER_TEMP/secrets.json"
           output="$(pnpm exec wrangler preview --name "$PREVIEW" --json)"
           printf '%s\n' "$output"
-          echo "url=$(jq -er '.preview.urls[0]' <<< "$output")" >> "$GITHUB_OUTPUT"
+          # Wrangler prints its banner before the JSON. A missing URL fails the step.
+          url="$(sed -n '/^{/,$p' <<< "$output" | jq -er '.preview.urls[0]')"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           FINGERPRINT_SECRET: ${{ secrets.PREVIEW_FINGERPRINT_SECRET }}
           BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}

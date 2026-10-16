@@ -1,9 +1,22 @@
-import type { CommentSort, Vote, WidgetData } from "@fox-renard/api/client";
+import {
+  type CommentSort,
+  maxPhotosPerComment,
+  type Vote,
+  type WidgetData,
+} from "@fox-renard/api/client";
 import { useEffect, useId, useRef, useState } from "preact/hooks";
 import { useBotCheck } from "./bot-check";
 import { locale, type MessageKey, t } from "./i18n";
+import { preparedPhoto } from "./photos";
 import { relativeDate } from "./relative-date";
-import { type PageConnection, postComment, putVote, Refused } from "./requests";
+import {
+  attachPhoto,
+  type PageConnection,
+  photoUrl,
+  postComment,
+  putVote,
+  Refused,
+} from "./requests";
 
 type TopLevelComment = WidgetData["comments"][number];
 type Comment = TopLevelComment["replies"][number];
@@ -129,6 +142,26 @@ function Body({ body }: Pick<Comment, "body">) {
   );
 }
 
+function Photos({ page, comment }: { page: PageConnection; comment: Comment }) {
+  // A Pending Comment's Photos are served once a Member approves it.
+  if (comment.photos.length === 0 || comment.pending) return null;
+  const alt = t("photoOf", { name: comment.commenter.displayName });
+  return (
+    <ul class="photos">
+      {comment.photos.map(({ id }) => {
+        const url = photoUrl(page, id);
+        return (
+          <li key={id}>
+            <a href={url} target="_blank" rel="noopener">
+              <img class="photo" src={url} alt={alt} loading="lazy" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function CommentArticle({
   page,
   comment,
@@ -168,6 +201,7 @@ function CommentArticle({
           {comment.pending && <span class="pending">{t("pending")}</span>}
         </p>
         <Body body={comment.body} />
+        <Photos page={page} comment={comment} />
         <div class="comment-actions">
           <Votes page={page} comment={comment} onVoted={onVoted} />
           <button
@@ -193,8 +227,15 @@ function DeletedArticle() {
   );
 }
 
-/** Posted, with the email given to be sent a magic link, if any. */
-type OnPosted = (posted: Posted, email: string | undefined) => void;
+/**
+ * Posted, with the email given to be sent a magic link, if any, and whether
+ * each Photo chosen was attached.
+ */
+type OnPosted = (
+  posted: Posted,
+  email: string | undefined,
+  allPhotosAttached: boolean,
+) => void;
 
 function CommentForm({
   page,
@@ -214,7 +255,10 @@ function CommentForm({
   /** Shared by every form, like the display name. */
   email: string;
   onEmail: (email: string) => void;
-  /** Whether the form offers to verify an email: not to a Verified Commenter. */
+  /**
+   * Whether the form offers to verify an email: not to a Verified Commenter,
+   * who attaches Photos instead.
+   */
   asksEmail: boolean;
   /** The Comment this form Replies to, or none for a top-level Comment. */
   answering?: Comment;
@@ -225,8 +269,13 @@ function CommentForm({
   const [honeypot, setHoneypot] = useState("");
   const [posting, setPosting] = useState(false);
   const [failure, setFailure] = useState<MessageKey>();
+  const [files, setFiles] = useState<File[]>([]);
+  const [tooManyFiles, setTooManyFiles] = useState(false);
+  // Changing it empties the file field once the Photos are attached.
+  const [filesKey, setFilesKey] = useState(0);
   const headingId = useId();
   const emailHintId = useId();
+  const photosHintId = useId();
   const displayNameInput = useRef<HTMLInputElement>(null);
   const textBox = useRef<HTMLTextAreaElement>(null);
   const botCheck = useBotCheck(page);
@@ -247,6 +296,14 @@ function CommentForm({
     setFailure(undefined);
     try {
       const given = (asksEmail && email.trim()) || undefined;
+      let prepared: Blob[];
+      try {
+        prepared = await Promise.all(files.map(preparedPhoto));
+      } catch (error) {
+        console.error(error);
+        setFailure("photoUnreadable");
+        return;
+      }
       const posted = await botCheck.post((solution) =>
         postComment(page, {
           botCheck: solution,
@@ -257,8 +314,23 @@ function CommentForm({
           email: given,
         }),
       );
-      onPosted(posted, given);
+      const photos = [];
+      for (const photo of prepared) {
+        try {
+          photos.push(await attachPhoto(page, posted.comment.id, photo));
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      onPosted(
+        { ...posted, comment: { ...posted.comment, photos } },
+        given,
+        photos.length === prepared.length,
+      );
       setText("");
+      setFiles([]);
+      setTooManyFiles(false);
+      setFilesKey((key) => key + 1);
     } catch (error) {
       console.error(error);
       setFailure(
@@ -329,6 +401,32 @@ function CommentForm({
           setText(event.currentTarget.value);
         }}
       />
+      {!asksEmail && (
+        <>
+          <label class="field">
+            <span class="field-label">{t("addPhotos")}</span>
+            <input
+              key={filesKey}
+              class="input"
+              type="file"
+              name="photos"
+              accept="image/*"
+              multiple
+              aria-describedby={photosHintId}
+              onChange={(event) => {
+                const chosen = Array.from(event.currentTarget.files ?? []);
+                setTooManyFiles(chosen.length > maxPhotosPerComment);
+                setFiles(chosen.slice(0, maxPhotosPerComment));
+              }}
+            />
+          </label>
+          <p class="field-hint" id={photosHintId}>
+            {t(tooManyFiles ? "tooManyPhotos" : "photosHint", {
+              count: String(maxPhotosPerComment),
+            })}
+          </p>
+        </>
+      )}
       {/* Hidden from people and their tools, so that only a bot fills it in. */}
       <div class="trap" aria-hidden="true">
         <input
@@ -390,9 +488,12 @@ export function Comments({
   const [answering, setAnswering] = useState<Answering>();
   const asksEmail = !commenter?.verified;
 
-  const afterPosting: OnPosted = (posted, email) => {
+  const afterPosting: OnPosted = (posted, email, allPhotosAttached) => {
     onPosted(posted);
-    const pending = posted.comment.pending ? [t("postedPending")] : [];
+    const pending = [
+      ...(posted.comment.pending ? [t("postedPending")] : []),
+      ...(allPhotosAttached ? [] : [t("photoNotAttached")]),
+    ];
     if (email === undefined) {
       setNotices(pending);
       return;
@@ -495,8 +596,8 @@ export function Comments({
                   onEmail={setEmail}
                   asksEmail={asksEmail}
                   answering={answering.comment}
-                  onPosted={(reply, email) => {
-                    afterPosting(reply, email);
+                  onPosted={(reply, email, allPhotosAttached) => {
+                    afterPosting(reply, email, allPhotosAttached);
                     stopAnswering();
                   }}
                   onCancel={stopAnswering}

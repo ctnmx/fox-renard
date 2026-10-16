@@ -7,6 +7,9 @@ import {
   maxCommentLength,
   maxDisplayNameLength,
   maxPageTitleLength,
+  maxPhotoBytes,
+  maxPhotosPerComment,
+  photoWindow,
   shorten,
   tidyCommentText,
   tidyDisplayName,
@@ -17,6 +20,7 @@ import type {
   Commenter,
   CommentStatus,
   Page,
+  PhotoContentType,
   Reaction,
   ReactionOption,
   Site,
@@ -25,6 +29,7 @@ import type {
   VoteCounts,
 } from "./model";
 import { networkOf } from "./network";
+import { photoFileOf, photoKey } from "./photo-file";
 import type { BotChallenge, Ports, RateLimitedAction } from "./ports";
 
 /** Where a public request comes from: a Site, and the domain of the page on it. */
@@ -119,6 +124,8 @@ export interface CommentView {
   vote: Vote | null;
   /** Whether it awaits a Member's approval, which only its Commenter's browsers see. */
   pending: boolean;
+  /** Its Photos, oldest first, which `getPhoto` serves. */
+  photos: { id: string }[];
 }
 
 /**
@@ -213,6 +220,45 @@ export type BotChallengeResult =
       postableIn: number;
     }
   | SiteRefusal;
+
+/** A browser's Photo for a Comment it posted, as the Widget uploads it. */
+export interface PhotoRequest extends PageRequest {
+  commentId: string;
+  /** The file, which the API reads only up to its size limit. */
+  photo: Uint8Array;
+}
+
+export type PhotoResult =
+  | { outcome: "attached"; photo: { id: string } }
+  | SiteRefusal
+  | { outcome: "page-not-found" }
+  | { outcome: "comment-not-found" }
+  | { outcome: "verification-required" }
+  | { outcome: "not-comment-author" }
+  | { outcome: "photo-too-late" }
+  | { outcome: "too-many-photos" }
+  | { outcome: "photo-too-large" }
+  | { outcome: "not-a-photo" }
+  | { outcome: "photo-has-metadata" };
+
+/** A request for one of a Site's Photos, from any page showing it. */
+export interface PhotoFileRequest {
+  siteId: string;
+  photoId: string;
+  /** The `ETag` of the copy the browser holds, from `If-None-Match`, if any. */
+  heldTag: string | null;
+}
+
+export type PhotoFileResult =
+  | { outcome: "unchanged"; tag: string }
+  | {
+      outcome: "found";
+      body: Uint8Array;
+      contentType: PhotoContentType;
+      /** Names this Photo's file, which never changes. */
+      tag: string;
+    }
+  | { outcome: "photo-not-found" };
 
 export type MagicLinkResult =
   | {
@@ -376,6 +422,7 @@ function commentView(comment: Comment, vote: Vote | null): CommentView {
     voteCounts: comment.voteCounts,
     vote,
     pending: comment.status === "pending",
+    photos: comment.photoIds.map((id) => ({ id })),
   };
 }
 
@@ -415,6 +462,7 @@ export function createCore({
   store,
   clock,
   email: emailSender,
+  photos,
   botCheck,
   fingerprintSecret,
   consoleOrigin,
@@ -671,7 +719,13 @@ export function createCore({
   }
 
   return {
-    ...createConsole({ store, clock, email: emailSender, consoleOrigin }),
+    ...createConsole({
+      store,
+      clock,
+      email: emailSender,
+      photos,
+      consoleOrigin,
+    }),
 
     /** What a Widget shows on a Page; an unknown Page Key creates the Page. */
     async loadWidget(request: WidgetRequest): Promise<WidgetResult> {
@@ -796,6 +850,8 @@ export function createCore({
             status,
             createdAt,
             voteCounts: { up: 0, down: 0 },
+            // The Widget attaches its Photos once it is posted.
+            photoIds: [],
           },
           null,
         ),
@@ -933,6 +989,88 @@ export function createCore({
         outcome: "reacted",
         browserToken,
         ...(await reactionsView(site, page, visitor)),
+      };
+    },
+
+    /**
+     * Attaches a Photo to a Comment its Verified Commenter posted from this
+     * browser, within 15 minutes of posting it. The file must be a still WebP
+     * or PNG image with no metadata, since a client can skip the Widget's
+     * stripping.
+     */
+    async attachPhoto(request: PhotoRequest): Promise<PhotoResult> {
+      const allowed = await allowedSite(request);
+      if (allowed.outcome !== "allowed") return allowed;
+      const { site } = allowed;
+
+      const page = await store.findPage(site.id, request.pageKey);
+      if (!page) return { outcome: "page-not-found" };
+      const comment = await store.findComment(page.id, request.commentId);
+      if (!comment || !answerable(comment)) {
+        return { outcome: "comment-not-found" };
+      }
+
+      const recognized = await recognize(site, request.browserToken);
+      const commenter =
+        recognized && (await store.findCommenter(recognized.visitor.id));
+      if (!commenter?.verified) return { outcome: "verification-required" };
+      if (commenter.id !== comment.commenter.id) {
+        return { outcome: "not-comment-author" };
+      }
+      if (clock.now().getTime() - comment.createdAt.getTime() >= photoWindow) {
+        return { outcome: "photo-too-late" };
+      }
+      if (comment.photoIds.length >= maxPhotosPerComment) {
+        return { outcome: "too-many-photos" };
+      }
+
+      if (request.photo.length > maxPhotoBytes) {
+        return { outcome: "photo-too-large" };
+      }
+      const file = photoFileOf(request.photo);
+      if (file.outcome !== "photo") return file;
+
+      const photo = await store.createPhoto(
+        { commentId: comment.id, contentType: file.contentType },
+        { atMost: maxPhotosPerComment },
+      );
+      if (!photo) return { outcome: "too-many-photos" };
+      try {
+        await photos.put(photoKey(photo.id), {
+          body: request.photo,
+          contentType: file.contentType,
+        });
+      } catch (error) {
+        await store.deletePhoto(photo.id);
+        throw error;
+      }
+      return { outcome: "attached", photo: { id: photo.id } };
+    },
+
+    /**
+     * A Photo's file, for any page to show. Only a published Comment's
+     * Photos are served: a Pending one's wait with it, and spam's never show.
+     * The check runs on every request, so a Photo goes from sight as soon as
+     * its Comment does; a browser that holds the file is spared reading it.
+     */
+    async getPhoto({
+      siteId,
+      photoId,
+      heldTag,
+    }: PhotoFileRequest): Promise<PhotoFileResult> {
+      const photo = await store.findPhoto(siteId, photoId);
+      if (photo?.commentStatus !== "published") {
+        return { outcome: "photo-not-found" };
+      }
+      const tag = `"${photo.id}"`;
+      if (heldTag === tag) return { outcome: "unchanged", tag };
+      const file = await photos.get(photoKey(photo.id));
+      if (!file) return { outcome: "photo-not-found" };
+      return {
+        outcome: "found",
+        body: file.body,
+        contentType: photo.contentType,
+        tag,
       };
     },
 

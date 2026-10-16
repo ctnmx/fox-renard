@@ -2,14 +2,17 @@
 import { createAltchaBotCheck } from "@fox-renard/altcha";
 import { createApp } from "@fox-renard/api";
 import { createBrevoEmailSender } from "@fox-renard/brevo";
-import { createCore, type PhotoStore } from "@fox-renard/core";
+import { createCore } from "@fox-renard/core";
 import { createStore } from "@fox-renard/db";
 import { connectPostgres } from "@fox-renard/db/postgres";
 import { getConnInfo } from "@hono/cloudflare-workers";
+import { createR2PhotoStore } from "./r2-photo-store";
 
 /** What Cloudflare gives the Worker: the bindings and vars of wrangler.jsonc, and its secrets. */
 interface Env {
   HYPERDRIVE: Hyperdrive;
+  /** The R2 bucket that holds Photos; previews have one of their own (ADR-0008). */
+  PHOTOS: R2Bucket;
   /** The secret Core derives each day's fingerprint secret from (ADR-0006). */
   FINGERPRINT_SECRET: string;
   BREVO_API_KEY: string;
@@ -24,17 +27,6 @@ interface Env {
   CONSOLE_ORIGIN?: string;
 }
 
-function notWiredYet(piece: string) {
-  return () => Promise.reject(new Error(`${piece} is not wired yet.`));
-}
-
-// Core stores no Photo yet: #12 wires an R2 bucket for them.
-const photos: PhotoStore = {
-  put: notWiredYet("The Photo store (#12)"),
-  get: notWiredYet("The Photo store (#12)"),
-  delete: notWiredYet("The Photo store (#12)"),
-};
-
 /** Core on Cloudflare's adapters, with a database connection that `close` ends. */
 function openCore(env: Env, consoleOrigin: string) {
   // A Worker cannot share a connection between requests; Hyperdrive pools
@@ -47,7 +39,7 @@ function openCore(env: Env, consoleOrigin: string) {
       apiKey: env.BREVO_API_KEY,
       senderAddress: env.EMAIL_SENDER_ADDRESS,
     }),
-    photos,
+    photos: createR2PhotoStore(env.PHOTOS),
     botCheck: createAltchaBotCheck({ hmacKey: env.ALTCHA_HMAC_KEY }),
     fingerprintSecret: { current: async () => env.FINGERPRINT_SECRET },
     consoleOrigin,

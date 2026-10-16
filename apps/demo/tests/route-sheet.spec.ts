@@ -490,3 +490,72 @@ test.describe("Email verification on a route sheet", () => {
     ).toHaveCount(0);
   });
 });
+
+/** The four-letter chunk names of a WebP file, in order. */
+function webpChunks(file: Buffer): string[] {
+  const chunks: string[] = [];
+  for (let at = 12; at + 8 <= file.length; ) {
+    const size = file.readUInt32LE(at + 4);
+    chunks.push(file.toString("latin1", at, at + 4));
+    at += 8 + size + (size % 2);
+  }
+  return chunks;
+}
+
+test.describe("Photos on a route sheet", () => {
+  test("a Verified Commenter attaches a phone photo: it leaves the browser resized to WebP with no metadata, and shows with the Comment", async ({
+    page,
+    request,
+  }) => {
+    await page.goto(`/article/essai-${randomUUID()}`);
+    const email = `marie-${randomUUID()}@example.com`;
+    let widget = await scrollToWidget(page);
+    await widget.getByRole("textbox", { name: "Ton nom" }).fill("Marie Dupont");
+    await widget
+      .getByRole("textbox", { name: "Ton email (facultatif)" })
+      .fill(email);
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Premier passage.");
+    await widget.getByRole("button", { name: "Publier" }).click();
+    await expect(widget.getByRole("status")).toContainText(email);
+    // The email opens the link in a new tab of the same browser.
+    const opened = await page.context().newPage();
+    await opened.goto(await magicLinkTo(request, email));
+    widget = opened.locator("fox-renard-widget");
+    await widget
+      .getByRole("button", { name: "Confirmer mon adresse email" })
+      .click();
+    await expect(widget.getByRole("status")).toHaveText(
+      "Ton adresse email est confirmée.",
+    );
+
+    await widget
+      .getByRole("textbox", { name: "Ton commentaire" })
+      .fill("Le sommet, vu du col.");
+    // A phone photo, 2400 × 1800, with its camera and GPS position in EXIF.
+    await widget
+      .getByLabel("Ajouter des photos")
+      .setInputFiles(
+        new URL("./fixtures/gps-photo.jpg", import.meta.url).pathname,
+      );
+    await widget.getByRole("button", { name: "Publier" }).click();
+
+    const photo = widget.getByRole("img", { name: "Photo de Marie Dupont" });
+    await expect(photo).toBeVisible();
+    // The API stores the file as the browser sent it, and serves it back.
+    const src = await photo.getAttribute("src");
+    if (!src) throw new Error("The Photo has no address");
+    const sent = await (await request.get(src)).body();
+    expect(sent.toString("latin1", 0, 4)).toBe("RIFF");
+    expect(sent.toString("latin1", 8, 12)).toBe("WEBP");
+    expect(webpChunks(sent)).not.toContainEqual(
+      expect.stringMatching(/^(EXIF|XMP )$/),
+    );
+    expect(sent.toString("latin1")).not.toContain("Fox Renard Test Camera");
+    const width = await photo.evaluate(
+      (image: HTMLImageElement) => image.naturalWidth,
+    );
+    expect(width).toBe(1600);
+  });
+});

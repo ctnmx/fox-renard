@@ -82,6 +82,7 @@ function imported(
     voteCounts: { up: 0, down: 0 },
     vote: null,
     pending,
+    photos: [],
   };
 }
 

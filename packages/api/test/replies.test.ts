@@ -47,6 +47,7 @@ describe("a Commenter Replies to a Comment", () => {
       voteCounts: { up: 0, down: 0 },
       vote: null,
       pending: false,
+      photos: [],
     };
     expect(reply.comment).toEqual(listedReply);
     expect(reply.topLevelCommentId).toBe(comment.id);

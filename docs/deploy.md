@@ -1,6 +1,6 @@
 # Deploy
 
-Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`) serves the HTTP API, the Widget script and the Member console. PostgreSQL runs on Neon in Frankfurt, and the Worker reaches it through Hyperdrive. Brevo sends the emails.
+Fox Renard runs on Cloudflare under foxrenard.com. One Worker (`apps/cloudflare`) serves the HTTP API, the Widget script and the Member console. PostgreSQL runs on Neon in Frankfurt, and the Worker reaches it through Hyperdrive. Photos live in the R2 bucket `fox-renard-photos`. Brevo sends the emails.
 
 ## Where Fox Renard answers
 
@@ -25,7 +25,7 @@ Some rules hold for every deployment:
 
 - **Migrations run before the Worker deploys.** A migration must therefore keep the Worker version already running working.
 - **The seed is idempotent.** It creates Recto Verso's Organization, Member, Site, Allowed Domains and Reaction Set once, and changes nothing afterward.
-- **Previews never hold production data** (ADR-0008). Their branches belong to a second Neon project, and their seed uses the demo Member `membre@example.com`.
+- **Previews never hold production data** (ADR-0008). Their branches belong to a second Neon project, and their seed uses the demo Member `membre@example.com`. Their Photos go to the bucket `fox-renard-photos-preview`, which every preview shares and which deletes each Photo 30 days after upload.
 - **The smoke check** serves the demo route sheet on `localhost` and loads it against the deployment. It sees the Reaction Set, and the console's sign-in page, as Seam 3's `@smoke` tests do locally. It adds one Page, `article-smoke-check`, to Recto Verso's Site, which is why `localhost` is one of its Allowed Domains.
 - **Previews run no Cron Trigger.** Cloudflare runs the hourly erasure on production only.
   _Contradicts ADR-0006 on previews, but worth accepting:_ a preview erases expired fingerprints only when someone reacts or votes there, and keeps expired magic links, with their emails, and expired sign-ins until its pull request closes. Previews hold only the data of people testing them, and Cloudflare runs no Cron Trigger on a preview.
@@ -100,6 +100,8 @@ Everything stays within free plans (ADR-0002). These are the limits Fox Renard c
 | Neon | 10 branches per project | The preview project holds its root plus one per open preview. |
 | Neon | 100 compute-hours a month per project | Production's 0.25 CU compute runs 400 hours a month at most. Each request and the hourly erasure wake it, and it suspends after 5 minutes idle. Hyperdrive may hold idle connections for up to 10 minutes, which can keep it awake longer. |
 | Neon | 1 GB of storage per project, 5 GB of egress a month | Comments, Reactions and Votes. |
+| R2 | 10 GB of storage | Photos, at most 1 MB each and usually far less. |
+| R2 | 1 million writes and 10 million reads a month | One write per Photo attached, one read per Photo the Worker serves outside the browser's cache. |
 | Brevo | 300 emails a day | Magic links, sign-in links, and one email per Member for each new Comment. Core caps an address at 3 working magic links per Site, and a Member at 3 working sign-in links. Previews share this quota. |
 
 Together, Hyperdrive's configs and the preview project's branches allow 9 open previews at once. A tenth preview fails to deploy until a pull request closes.

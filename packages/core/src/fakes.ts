@@ -58,6 +58,11 @@ export class EmailOutbox implements EmailSender {
 export class InMemoryPhotoStore implements PhotoStore {
   readonly #photos = new Map<string, StoredPhoto>();
 
+  /** How many Photos the store holds, for tests to tell one is gone. */
+  get size(): number {
+    return this.#photos.size;
+  }
+
   async put(key: string, photo: StoredPhoto): Promise<void> {
     this.#photos.set(key, photo);
   }

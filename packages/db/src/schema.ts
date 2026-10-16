@@ -1,3 +1,4 @@
+import { photoContentTypes } from "@fox-renard/core";
 import { relations, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -230,6 +231,24 @@ export const comments = pgTable(
       .on(table.pageId, table.hyvorCommentId)
       .where(sql`${table.hyvorCommentId} is not null`),
   ],
+);
+
+/**
+ * A Photo a Verified Commenter attached to a Comment, at most 4 per Comment.
+ * Its file sits in the Photo store under `photos/<id>`, and goes with it.
+ */
+export const photos = pgTable(
+  "photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    commentId: uuid("comment_id")
+      .notNull()
+      .references(() => comments.id, { onDelete: "cascade" }),
+    /** `image/webp`, or `image/png` from a browser that cannot make WebP. */
+    contentType: text("content_type", { enum: photoContentTypes }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index().on(table.commentId, table.createdAt)],
 );
 
 /**
