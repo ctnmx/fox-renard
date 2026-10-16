@@ -32,6 +32,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The proje
 | Console | `apps/console` | Where Members sign in and moderate Comments (React, shadcn/ui). |
 | Demo | `apps/demo` | A local route sheet embedding the Widget. |
 | Cloudflare | `apps/cloudflare` | The Worker that runs Fox Renard in production. |
+| Hyvor import | `apps/hyvor-import` | The command-line tool that imports a Hyvor Talk JSON export (ADR-0007). |
 
 ## Develop
 
@@ -50,6 +51,17 @@ The demo serves the console on http://localhost:8787. Sign in as
 Chromium), `pnpm build` and `pnpm size` are what CI runs on every pull request.
 CI also runs the Worker in workerd: `pnpm --filter @fox-renard/cloudflare e2e`,
 on the PostgreSQL that `TEST_DATABASE_URL` names.
+
+## Import from Hyvor Talk
+
+Export the data from the Hyvor console (Settings → Export, "All Data - JSON"), then run:
+
+```sh
+pnpm --filter @fox-renard/hyvor-import start /path/to/export.json \
+  --site <Site id> --email <Member's email> [--api https://console.foxrenard.com]
+```
+
+The tool emails a sign-in link to the Member and asks for it, as the console does. It then sends the export a few conversations at a time and prints how many Comments it imported, skipped (spam or deleted) and found already present. Running it again imports only the Comments posted since. Against the demo, use `--api http://localhost:8787`, where the link is in http://localhost:8787/outbox.
 
 ## Install the Widget
 

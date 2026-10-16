@@ -2,6 +2,15 @@ import { bodyOf, type CommentSegment, initialsOf } from "./comment-text";
 import { createConsole } from "./console";
 import { hmacSha256Hex, randomHex, sha256Hex } from "./crypto";
 import { magicLinkEmail, newCommentEmail } from "./emails";
+import {
+  lengthOf,
+  maxCommentLength,
+  maxDisplayNameLength,
+  maxPageTitleLength,
+  shorten,
+  tidyCommentText,
+  tidyDisplayName,
+} from "./limits";
 import type {
   CastVote,
   Comment,
@@ -216,10 +225,6 @@ export type MagicLinkResult =
   | SiteRefusal
   | { outcome: "magic-link-invalid" };
 
-const maxPageTitleLength = 500;
-const maxDisplayNameLength = 50;
-const maxCommentLength = 5000;
-
 const hour = 60 * 60 * 1000;
 
 /** How long a magic link works, as its email tells. */
@@ -260,15 +265,6 @@ const rateLimits: Record<
   vote: { perBrowser: 50, perFingerprint: 100 },
   comment: { perBrowser: 10, perFingerprint: 20 },
 };
-
-// Lengths count code points, so an emoji counts once and is never cut in half.
-function lengthOf(text: string): number {
-  return Array.from(text).length;
-}
-
-function shorten(text: string, maxLength: number): string {
-  return Array.from(text).slice(0, maxLength).join("");
-}
 
 /**
  * Each top-level Comment with its Replies, from a Page's Comments newest
@@ -721,17 +717,11 @@ export function createCore({
         return { outcome: "bot-check-failed" };
       }
 
-      const displayName = request.displayName
-        .normalize("NFC")
-        .trim()
-        .replace(/\s+/gu, " ");
+      const displayName = tidyDisplayName(request.displayName);
       if (!displayName || lengthOf(displayName) > maxDisplayNameLength) {
         return { outcome: "invalid-display-name" };
       }
-      const text = request.text
-        .normalize("NFC")
-        .replace(/\r\n?/gu, "\n")
-        .trim();
+      const text = tidyCommentText(request.text);
       if (!text) return { outcome: "empty-comment" };
 
       let answered: Comment | null = null;

@@ -11,6 +11,7 @@ import {
   desc,
   eq,
   gt,
+  inArray,
   isNotNull,
   isNull,
   lte,
@@ -371,6 +372,58 @@ export function createStore(db: Database): Store {
         .returning({ id: comments.id });
       if (!created) throw new Error("The Comment could not be created");
       return created;
+    },
+
+    async findHyvorComments(pageId, hyvorCommentIds) {
+      if (hyvorCommentIds.length === 0) return new Map();
+      const found = await db
+        .select({ id: comments.id, hyvorCommentId: comments.hyvorCommentId })
+        .from(comments)
+        .where(
+          and(
+            eq(comments.pageId, pageId),
+            inArray(comments.hyvorCommentId, hyvorCommentIds),
+          ),
+        );
+      return new Map(
+        found.flatMap(({ id, hyvorCommentId }) =>
+          hyvorCommentId === null ? [] : [[hyvorCommentId, id]],
+        ),
+      );
+    },
+
+    async findOrCreateHyvorCommenter({
+      siteId,
+      hyvorAuthorKey,
+      displayName,
+      email,
+    }) {
+      const inserted = db
+        .insert(commenters)
+        .values({ siteId, hyvorAuthorKey, displayName, email });
+      if (hyvorAuthorKey === null) {
+        const [created] = await inserted.returning({ id: commenters.id });
+        if (!created) throw new Error("The Commenter could not be created");
+        return created;
+      }
+      const [created] = await inserted
+        .onConflictDoNothing({
+          target: [commenters.siteId, commenters.hyvorAuthorKey],
+          where: isNotNull(commenters.hyvorAuthorKey),
+        })
+        .returning({ id: commenters.id });
+      if (created) return created;
+      const [found] = await db
+        .select({ id: commenters.id })
+        .from(commenters)
+        .where(
+          and(
+            eq(commenters.siteId, siteId),
+            eq(commenters.hyvorAuthorKey, hyvorAuthorKey),
+          ),
+        );
+      if (!found) throw new Error("The Commenter could not be created");
+      return found;
     },
 
     async findComment(pageId, commentId) {

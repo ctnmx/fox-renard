@@ -1,6 +1,11 @@
 import {
+  addHyvorImportCounts,
   type CommentSort,
   createCore,
+  type HyvorConversation,
+  type HyvorExport,
+  type HyvorImportCounts,
+  hyvorImportBatches,
   type ListedStatus,
   magicLinkParameter,
   type Vote,
@@ -463,7 +468,44 @@ export async function startTestApi() {
       async delete(commentId: string) {
         expectDone(await tryDelete(commentId), "delete the Comment");
       },
+
+      tryImportHyvor,
+
+      /**
+       * Imports a Hyvor Talk export into a Site, in requests of a few conversations
+       * as the import tool sends them, and adds up what they did.
+       */
+      async importHyvor(
+        hyvorExport: HyvorExport,
+        { siteId = rectoVerso.siteId, maxComments = 3 } = {},
+      ): Promise<HyvorImportCounts> {
+        let total = { imported: 0, skipped: 0, alreadyPresent: 0 };
+        for (const conversations of hyvorImportBatches(
+          hyvorExport,
+          maxComments,
+        )) {
+          const response = await tryImportHyvor({ siteId, conversations });
+          if (response.status !== 200) {
+            throw new Error(`Expected the import, got ${response.status}`);
+          }
+          total = addHyvorImportCounts(total, await response.json());
+        }
+        return total;
+      },
     };
+
+    function tryImportHyvor({
+      siteId = rectoVerso.siteId,
+      conversations,
+    }: {
+      siteId?: string;
+      conversations: HyvorConversation[];
+    }) {
+      return client.v1.console.sites[":siteId"]["hyvor-import"].$post(
+        { param: { siteId }, json: { conversations } },
+        withCookie(),
+      );
+    }
 
     function tryComments({
       siteId = rectoVerso.siteId,
@@ -681,6 +723,9 @@ export async function startTestApi() {
 
   return {
     client,
+    /** Calls the HTTP API as `fetch` would, for a client such as the import tool. */
+    fetch: async (input: string | URL | Request, init?: RequestInit) =>
+      app.request(input, init),
     /** Runs the erasure the platform schedules every hour, as Cloudflare does in production. */
     runHourlyErasure: () => core.eraseExpired(),
     /**

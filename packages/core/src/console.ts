@@ -1,6 +1,22 @@
 // The console, where Members sign in to manage their Organization's Sites.
 import { randomHex, sha256Hex } from "./crypto";
 import { signInLinkEmail } from "./emails";
+import {
+  type HyvorAuthor,
+  type HyvorConversation,
+  type HyvorImportCounts,
+  type HyvorImportStep,
+  hyvorImportSteps,
+  plainTextOf,
+} from "./hyvor-import";
+import {
+  maxCommentLength,
+  maxDisplayNameLength,
+  maxPageTitleLength,
+  shorten,
+  tidyCommentText,
+  tidyDisplayName,
+} from "./limits";
 import type { Comment, ListedStatus, Member, Page } from "./model";
 import type { Clock, EmailSender, Store } from "./ports";
 
@@ -86,6 +102,15 @@ export type ConsoleCommentsResult =
   | { outcome: "listed"; comments: ConsoleCommentView[] }
   | SiteRefusal;
 
+/** Hyvor Talk conversations a Member imports into one of their Sites (ADR-0007). */
+export interface HyvorImportRequest extends ConsoleSiteRequest {
+  conversations: HyvorConversation[];
+}
+
+export type HyvorImportResult =
+  | ({ outcome: "imported" } & HyvorImportCounts)
+  | SiteRefusal;
+
 export type SignInResult =
   | {
       outcome: "signed-in";
@@ -103,6 +128,67 @@ export type ConsoleHomeResult =
       sites: { id: string; name: string }[];
     }
   | SignedOut;
+
+/** The display name an imported Comment shows, as Fox Renard allows it. */
+function hyvorDisplayName({ name }: HyvorAuthor): string {
+  return shorten(tidyDisplayName(name), maxDisplayNameLength) || "Anonyme";
+}
+
+/** An email worth keeping for a Guest to verify later, as Hyvor gives it. */
+function hyvorEmail({ email }: HyvorAuthor): string | null {
+  const trimmed = email?.trim() ?? "";
+  return /^[^\s@]+@[^\s@]+$/u.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Tells one Hyvor author apart from every other on a Site: an account by its
+ * Hyvor user id, a Hyvor guest by their email. Two Hyvor guests without an
+ * email cannot be told apart, so each of their Comments gets a Guest of its
+ * own.
+ */
+function hyvorAuthorKey(author: HyvorAuthor): string | null {
+  if (author.type !== null && author.id !== null) {
+    return `${author.type}:${author.id}`;
+  }
+  const email = hyvorEmail(author);
+  return author.type === null && email ? `email:${email.toLowerCase()}` : null;
+}
+
+/**
+ * The Comment an import step creates, with its author. A placeholder keeps
+ * nothing its author said, nor who they were.
+ */
+function hyvorCommentToCreate(
+  step: Exclude<HyvorImportStep, { type: "skip" }>,
+  importedId: (hyvorCommentId: number) => string | undefined,
+) {
+  if (step.type === "placeholder") {
+    return {
+      author: { hyvorAuthorKey: null, displayName: "", email: null },
+      topLevelCommentId: null,
+      text: "",
+      status: "deleted",
+    } as const;
+  }
+  const { author, bodyHtml, status } = step.hyvorComment;
+  const mention = step.answeredName === null ? "" : `@${step.answeredName} `;
+  return {
+    author: {
+      hyvorAuthorKey: hyvorAuthorKey(author),
+      displayName: hyvorDisplayName(author),
+      email: hyvorEmail(author),
+    },
+    topLevelCommentId:
+      step.topLevelHyvorId === null
+        ? null
+        : (importedId(step.topLevelHyvorId) ?? null),
+    text: shorten(
+      tidyCommentText(mention + plainTextOf(bodyHtml)),
+      maxCommentLength,
+    ),
+    status: status === "pending" ? "pending" : "published",
+  } as const;
+}
 
 function consoleCommentView(
   comment: Comment & { page: ConsoleCommentView["page"] },
@@ -268,6 +354,62 @@ export function createConsole({
         pageKey,
       });
       return { outcome: "listed", comments: comments.map(consoleCommentView) };
+    },
+
+    /**
+     * Imports Hyvor Talk conversations into a Site, keyed by Hyvor comment id, so
+     * that importing them again creates nothing new (ADR-0007). An imported
+     * Comment keeps its date and Hyvor's status: it passes no bot check, rate
+     * limit or link rule, and emails nobody. Its author is a Guest. No
+     * Reaction or Vote is imported.
+     */
+    async importHyvor(request: HyvorImportRequest): Promise<HyvorImportResult> {
+      const found = await siteToManage(request);
+      if (found.outcome !== "found") return found;
+      const { siteId } = found;
+
+      const counts = { imported: 0, skipped: 0, alreadyPresent: 0 };
+      for (const conversation of request.conversations) {
+        const page = await store.findOrCreatePage(siteId, {
+          ...conversation.page,
+          title: shorten(conversation.page.title, maxPageTitleLength),
+        });
+        const known = await store.findHyvorComments(
+          page.id,
+          conversation.comments.map(({ id }) => id),
+        );
+
+        for (const step of hyvorImportSteps(conversation, hyvorDisplayName)) {
+          const { id: hyvorCommentId, createdAt } = step.hyvorComment;
+          if (step.type !== "comment") counts.skipped += 1;
+          if (step.type === "skip") continue;
+          if (known.has(hyvorCommentId)) {
+            if (step.type === "comment") counts.alreadyPresent += 1;
+            continue;
+          }
+
+          const placed = hyvorCommentToCreate(step, (hyvorId) =>
+            known.get(hyvorId),
+          );
+          const commenter = await store.findOrCreateHyvorCommenter({
+            siteId,
+            ...placed.author,
+          });
+          const { id } = await store.createComment({
+            pageId: page.id,
+            commenterId: commenter.id,
+            displayName: placed.author.displayName,
+            topLevelCommentId: placed.topLevelCommentId,
+            text: placed.text,
+            status: placed.status,
+            createdAt: new Date(createdAt * 1000),
+            hyvorCommentId,
+          });
+          known.set(hyvorCommentId, id);
+          if (step.type === "comment") counts.imported += 1;
+        }
+      }
+      return { outcome: "imported", ...counts };
     },
 
     /** Publishes a Pending Comment, or one marked as spam by mistake. */
